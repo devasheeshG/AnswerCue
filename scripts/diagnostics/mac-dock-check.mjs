@@ -51,6 +51,27 @@ for (let cycle = 1; cycle <= 4; cycle++) {
 // Also exercise direct executable launches, as users can launch from Terminal.
 const executable = path.join(appPath, 'Contents/MacOS/AnswerCue');
 const log = fs.openSync(path.join(output, 'direct-launch.log'), 'w');
-const child = spawn(executable, [], { stdio: ['ignore', log, log] });
-await sleep(3000); run(snapshotBinary, ['--dismiss-permissions'], true); await sleep(3000); snapshot('direct-launch'); child.kill('SIGTERM'); await sleep(3000); snapshot('direct-quit');fs.closeSync(log);
+const child = spawn(executable, ['--remote-debugging-port=9222', '--remote-debugging-address=127.0.0.1'], { stdio: ['ignore', log, log] });
+await sleep(3000); run(snapshotBinary, ['--dismiss-permissions'], true); await sleep(3000); snapshot('direct-launch');
+try {
+  const pages = await (await fetch('http://127.0.0.1:9222/json/list')).json();
+  const page = pages.find(page => page.url.includes('window=launcher')) || pages.find(page => page.type === 'page');
+  if (!page) throw new Error('No renderer debug target');
+  const socket = new WebSocket(page.webSocketDebuggerUrl);
+  await new Promise((resolve, reject) => { socket.addEventListener('open', resolve, { once: true }); socket.addEventListener('error', reject, { once: true }); });
+  let id = 0;
+  const evaluate = expression => new Promise((resolve, reject) => {
+    const requestId = ++id;
+    const timer = setTimeout(() => { socket.removeEventListener('message', listener); reject(new Error('Debug command timed out')); }, 10000);
+    const listener = event => { const response = JSON.parse(event.data); if (response.id !== requestId) return; clearTimeout(timer); socket.removeEventListener('message', listener); response.error || response.result?.exceptionDetails ? reject(new Error(JSON.stringify(response))) : resolve(response.result); };
+    socket.addEventListener('message', listener);
+    socket.send(JSON.stringify({ id: requestId, method: 'Runtime.evaluate', params: { expression, awaitPromise: true, returnByValue: true } }));
+  });
+  for (let toggle = 1; toggle <= 4; toggle++) {
+    await evaluate('window.electronAPI.setUndetectable(true)'); await sleep(1500); snapshot(`stealth-${toggle}-hide`);
+    await evaluate('window.electronAPI.setUndetectable(false)'); await sleep(1800); snapshot(`stealth-${toggle}-show`);
+  }
+  socket.close();
+} catch (error) { fs.writeFileSync(path.join(output, 'debug-toggle-error.log'), error.stack); }
+child.kill('SIGTERM'); await sleep(3000); snapshot('direct-quit');fs.closeSync(log);
 console.log(`Dock diagnostic evidence: ${output}`);
