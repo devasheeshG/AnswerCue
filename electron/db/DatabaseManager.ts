@@ -39,7 +39,7 @@ export interface Meeting {
         screenshotPreview?: string;
     }>;
     calendarEventId?: string;
-    source?: 'manual' | 'calendar';
+    source?: 'manual' | 'calendar' | 'chat';
     isProcessed?: boolean;
     titleSource?: 'placeholder' | 'auto' | 'manual' | 'calendar';
 }
@@ -937,6 +937,13 @@ export class DatabaseManager {
             console.error(`[DatabaseManager] Failed to update title for meeting ${id}:`, error);
             return false;
         }
+    }
+
+    public updateChatAutoTitle(id: string, title: string): boolean {
+        if (!this.db) return false;
+        // A delayed title must not overwrite a manual rename or a completed live interview.
+        return this.db.prepare("UPDATE meetings SET title = ?, title_source = 'auto' WHERE id = ? AND source = 'chat' AND title_source = 'auto'")
+            .run(title, id).changes > 0;
     }
 
     public updateMeetingSummary(id: string, updates: { overview?: string, actionItems?: string[], keyPoints?: string[], actionItemsTitle?: string, keyPointsTitle?: string }): boolean {

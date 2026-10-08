@@ -1,5 +1,41 @@
 # Changelog
 
+## [2.8.11] - 2026-10-08
+
+### Summary
+
+AnswerCue v2.8.11 saves preparation chats as interviews as soon as the first message is sent. Conversations appear immediately in the interview sidebar and receive automatic titles without requiring a live interview first.
+
+### What's New
+
+- **Chat interviews:** Sending the first message creates one saved interview and updates the sidebar count immediately.
+- **Automatic chat titles:** The selected LLM generates a short title from the first message. The sidebar and conversation header update together.
+
+### Improvements
+
+- Prep conversations remain available after reopening the app or switching interviews.
+- Starting a live interview from a saved prep chat reuses the same interview ID. Stopping and restarting continue the same history.
+- Chat-only conversations show Start interview and remain in the preparation phase until a live session is started.
+
+### Fixes
+
+- Prep chats no longer remain hidden from the interview list until a live session ends.
+- Empty drafts do not create sidebar entries. Repeated messages and save retries do not create duplicate interviews.
+- Delayed title generation cannot overwrite a manual rename or the title of a completed live interview.
+- A title request failure retains the chat with a title derived from the first message.
+
+### Technical
+
+- Uses the existing SQLite meeting index and workspace storage; no database schema or storage-path change is required.
+- Saves the conversation before launching asynchronous title generation. Title generation uses the selected LLM provider and may incur a small additional API request.
+- Full automated suite: **1,062 passed, zero failed, 41 skipped**. Adds regression coverage for first-message registration, empty drafts, duplicate retries, title failures, and manual/live title protection.
+- Browser UI checks cover sidebar/header title updates, subsequent messages, app reopening, and reuse of the saved interview ID on live start.
+- Existing provider-key and installed-user audio checks still require user-machine testing. Electron backend type checking retains pre-existing diagnostics.
+- Release CI validates packaged Mac runtime dependencies, DMGs, signatures, and macOS 27 Dock transitions. Windows CI verifies package inputs, the packaged renderer, and installer signing status.
+- User configuration, provider keys, Persona, custom instructions, and previous interviews are retained.
+
+See [.github/releases/v2.8.11.md](.github/releases/v2.8.11.md) for downloads and installation notes.
+
 ## [2.8.10] - 2026-10-08
 
 ### Summary

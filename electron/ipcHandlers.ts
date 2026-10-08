@@ -11,6 +11,7 @@ import { DatabaseManager } from './db/DatabaseManager'; // Import Database Manag
 import { AppState } from './main';
 import { CodexCliService } from './services/CodexCliService';
 import { InterviewContextDocsManager, ingestMarkdownDocument } from './services/InterviewContextDocsManager';
+import { registerChatInterview } from './services/ChatInterviewRegistration';
 import { InterviewWorkspaceStateManager } from './services/InterviewWorkspaceStateManager';
 import { PhoneMirrorService } from './services/PhoneMirrorService';
 import { SettingsManager } from './services/SettingsManager';
@@ -3085,8 +3086,23 @@ export function initializeIpcHandlers(appState: AppState): void {
 
   safeHandle('interview-workspace:save', async (_, state: any) => {
     try {
-      const saved = InterviewWorkspaceStateManager.getInstance().saveWorkspace(state);
-      return { success: true, state: saved };
+      const manager = InterviewWorkspaceStateManager.getInstance();
+      const saved = manager.saveWorkspace(state);
+      const db = DatabaseManager.getInstance();
+      const registered = registerChatInterview(saved, {
+        getMeeting: id => db.getMeetingDetails(id),
+        saveMeeting: (meeting, start, duration) => db.saveMeeting(meeting, start, duration),
+        saveWorkspace: workspace => manager.saveWorkspace(workspace),
+        updateAutoTitle: (id, title) => db.updateChatAutoTitle(id, title),
+        generateTitle: context => appState.processingHelper.getLLMHelper().generateMeetingSummary(
+          'Generate a concise 3–7 word interview chat title from the user message. Use the company, role, or topic when available. Output only the title, without quotes or commentary.',
+          context,
+        ),
+        notify: () => BrowserWindow.getAllWindows().forEach(win => {
+          if (!win.isDestroyed()) win.webContents.send('meetings-updated');
+        }),
+      });
+      return { success: true, ...registered };
     } catch (error: any) {
       console.error('[IPC] interview-workspace:save error:', error?.message ?? error);
       return { success: false, error: error?.message || 'Could not save interview workspace.' };

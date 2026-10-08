@@ -260,7 +260,7 @@ export interface ElectronAPI {
   interviewDocsDelete: (id: string) => Promise<{ success: boolean; error?: string }>
   interviewWorkspaceGetById: (id: string) => Promise<any | null>
   interviewWorkspaceGetByMeeting: (meetingId: string) => Promise<any | null>
-  interviewWorkspaceSave: (state: any) => Promise<{ success: boolean; state?: any; error?: string }>
+  interviewWorkspaceSave: (state: any) => Promise<{ success: boolean; state?: any; meeting?: any; error?: string }>
   startMeeting: (metadata?: any) => Promise<{ success: boolean; error?: string }>
   endMeeting: () => Promise<{ success: boolean; error?: string }>
   finalizeMicSTT: () => Promise<void>

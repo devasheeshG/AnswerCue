@@ -75,7 +75,7 @@ AnswerCue is focused on interview workflows, not a generic meeting dashboard.
 - **Preflight setup:** first-run setup guides the user through provider keys and required permissions.
 - **Provider keys:** Settings supports OpenAI, Google Gemini, and Anthropic Claude. Fetch Models refreshes the saved model list for that provider. One searchable Active Model dropdown combines all configured providers; this default also controls interview answers.
 - **Transcription settings:** AI Providers contains separate LLM providers and Transcription providers sections. Save transcription keys, test session access, and select one active transcription model across configured providers. An existing OpenAI LLM key can be reused if no separate transcription key is saved.
-- **Prep chat:** before an interview starts, the user can chat with the assistant to build interview context.
+- **Prep chat:** the first message creates a saved interview in the sidebar with an automatic title. Continue chatting, reopen it later, and start the live interview in the same conversation.
 - **Document context:** users can upload Markdown, TXT, PDF, and DOCX files. Files are ingested locally into Markdown, saved for reuse, and can be attached per interview.
 - **Custom instructions:** Full typed instructions, the complete extracted text of one attached file, and the saved AI Persona are passed directly to the LLM. No embeddings or vector search are used. The character counter includes typed instructions and file text.
 - **Live interview phase:** the live transcript separates interviewer speech, user speech, and AI responses.

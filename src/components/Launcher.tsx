@@ -50,6 +50,7 @@ interface Meeting {
         screenshotPreview?: string;
     }>;
     isProcessed?: boolean;
+    source?: 'manual' | 'calendar' | 'chat';
     titleSource?: 'placeholder' | 'auto' | 'manual' | 'calendar';
     active?: boolean; // UI state
     time?: string; // Optional for compatibility
@@ -1133,15 +1134,15 @@ const InterviewPrepPanel: React.FC<InterviewPrepPanelProps> = ({
     const liveItems = buildLiveTranscriptTimeline(liveTranscript);
     const savedItems = meeting ? buildTranscriptTimeline(meeting) : [];
     const transcriptItems = meeting ? [...savedItems, ...liveItems] : liveItems;
-    const hasInterviewStarted = isMeetingActive || liveItems.length > 0 || Boolean(meeting);
+    const hasInterviewStarted = isMeetingActive || liveItems.length > 0 || Boolean(meeting && meeting.source !== 'chat');
     const isFinalizing = isMeetingFinalizing(meeting);
-    const hasInterviewFinished = Boolean(meeting) || (!isMeetingActive && liveItems.length > 0);
+    const hasInterviewFinished = Boolean(meeting && meeting.source !== 'chat') || (!isMeetingActive && liveItems.length > 0);
     const beforeMessages = messages.filter(message => (message.phase || 'before') === 'before');
     const duringMessages = messages.filter(message => message.phase === 'during');
     const afterMessages = messages.filter(message => message.phase === 'after');
     const busy = conversationState === 'waiting' || conversationState === 'streaming';
     const panelTitle = isMeetingActive ? 'Live interview' : 'Chat';
-    const composerPlaceholder = meeting
+    const composerPlaceholder = meeting && meeting.source !== 'chat'
         ? 'Ask about this interview'
         : isMeetingActive
             ? 'Ask while the interview is live'
@@ -1353,7 +1354,7 @@ const InterviewPrepPanel: React.FC<InterviewPrepPanelProps> = ({
                         ) : (
                             <>
                                 <Play size={14} fill="currentColor" />
-                                {meeting ? 'Restart interview' : 'Start interview'}
+                                {meeting && meeting.source !== 'chat' ? 'Restart interview' : 'Start interview'}
                             </>
                         )}
                     </button>
@@ -2048,7 +2049,8 @@ const Launcher: React.FC<LauncherProps> = ({ onStartMeeting, onOpenSettings, onP
 
         try {
             const state = await window.electronAPI?.interviewWorkspaceGetById?.(draftId) as InterviewWorkspaceState | null | undefined;
-            if (state && !state.meetingId && state.status !== 'complete') {
+            if (state && state.status === 'draft') {
+                if (state.meetingId) selectMeeting(await window.electronAPI.getMeetingDetails(state.meetingId));
                 const docIds = Array.isArray(state.selectedDocumentIds) ? state.selectedDocumentIds : [];
                 setPrepMessages((Array.isArray(state.messages) ? state.messages : []).map(message => ({
                     ...message,
@@ -2174,7 +2176,7 @@ const Launcher: React.FC<LauncherProps> = ({ onStartMeeting, onOpenSettings, onP
             overrides.selectedDocumentIds ?? selectedDocIds,
         );
         const meetingId = overrides.meetingId ?? selectedMeeting?.id;
-        const status = overrides.status ?? (meetingId ? 'complete' : isMeetingActive ? 'active' : 'draft');
+        const status = overrides.status ?? (isMeetingActive ? 'active' : meetingId && selectedMeeting?.source !== 'chat' ? 'complete' : 'draft');
         const documentsForContext = interviewDocs.filter(doc => selectedDocumentIds.includes(doc.id));
         const contextMarkdown = buildInterviewContextMarkdown(messages, documentsForContext);
         const persistedMessages = messages.map(message => ({
@@ -2193,6 +2195,8 @@ const Launcher: React.FC<LauncherProps> = ({ onStartMeeting, onOpenSettings, onP
 
         if (!result?.success) {
             console.error('[Launcher] Failed to save interview workspace:', result?.error);
+        } else if (result.meeting && workspaceIdRef.current === id) {
+            selectMeeting(result.meeting);
         }
         return result;
     }, [
@@ -2202,6 +2206,8 @@ const Launcher: React.FC<LauncherProps> = ({ onStartMeeting, onOpenSettings, onP
         prepMessages,
         selectedDocIds,
         selectedMeeting?.id,
+        selectedMeeting?.source,
+        selectMeeting,
         workspaceStateId,
     ]);
 
@@ -2215,7 +2221,10 @@ const Launcher: React.FC<LauncherProps> = ({ onStartMeeting, onOpenSettings, onP
         setWorkspaceStateId(savedDraftId);
         window.electronAPI?.interviewWorkspaceGetById?.(savedDraftId)
             .then((state: InterviewWorkspaceState | null) => {
-                if (!state || state.meetingId || state.status === 'complete') return;
+                if (!state || state.status !== 'draft') return;
+                if (state.meetingId) {
+                    window.electronAPI.getMeetingDetails(state.meetingId).then(selectMeeting);
+                }
                 setPrepMessages((Array.isArray(state.messages) ? state.messages : []).map(message => ({
                     ...message,
                     isStreaming: false,
@@ -3162,7 +3171,7 @@ const Launcher: React.FC<LauncherProps> = ({ onStartMeeting, onOpenSettings, onP
         const note = prepDraft.trim() || (selectedDocs.length > 0 ? 'Use the attached documents as context for this interview.' : '');
         if (!note || workspaceConversationState === 'waiting' || workspaceConversationState === 'streaming') return;
 
-        const phase: PrepMessage['phase'] = isMeetingActive ? 'during' : selectedMeeting ? 'after' : 'before';
+        const phase: PrepMessage['phase'] = isMeetingActive ? 'during' : selectedMeeting && selectedMeeting.source !== 'chat' ? 'after' : 'before';
         const messageAttachments = selectedDocs.map(docToPrepAttachment);
         const userMessage: PrepMessage = {
             id: genMessageId(),
@@ -3189,7 +3198,7 @@ const Launcher: React.FC<LauncherProps> = ({ onStartMeeting, onOpenSettings, onP
         setWorkspaceErrorMessage(null);
         setPrepMessages(nextMessages);
         setWorkspaceConversationState('waiting');
-        persistWorkspaceState({
+        await persistWorkspaceState({
             messages: nextMessages,
             selectedDocumentIds: nextContextDocIds,
         }).catch(error => console.error('[LauncherWorkspaceChat] failed to persist outgoing message:', error));
@@ -3318,14 +3327,14 @@ const Launcher: React.FC<LauncherProps> = ({ onStartMeeting, onOpenSettings, onP
             ...workspaceContextDocIds,
             ...prepMessages.flatMap(message => message.attachments?.map(doc => doc.id) || []),
         ]));
-        await persistWorkspaceState({
+        const savedWorkspace = await persistWorkspaceState({
             messages: prepMessages,
             selectedDocumentIds: interviewDocumentIds,
             status: 'active',
         });
         onStartMeeting({
             source: 'manual',
-            resumeMeetingId: selectedMeeting?.id,
+            resumeMeetingId: savedWorkspace?.state?.meetingId || selectedMeeting?.id,
             title: selectedMeeting?.title === 'Processing...' ? undefined : selectedMeeting?.title,
             interviewContext: {
                 workspaceStateId,
