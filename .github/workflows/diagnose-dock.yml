@@ -6,6 +6,11 @@ on:
         type: string
         default: v2.8.8
         description: Published release to test
+      runner_os:
+        type: choice
+        default: all
+        description: Runner image to test
+        options: [all, macos-14, macos-26, xcode-27]
 permissions:
   contents: read
 jobs:
@@ -13,7 +18,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-14, macos-26]
+        os: ${{ fromJSON(inputs.runner_os == 'all' && '["macos-14","macos-26","xcode-27"]' || format('["{0}"]', inputs.runner_os)) }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 15
     steps:
