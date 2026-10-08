@@ -1,0 +1,47 @@
+name: Diagnose macOS Dock
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        type: string
+        default: v2.8.8
+        description: Published release to test
+permissions:
+  contents: read
+jobs:
+  dock:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-14, macos-26]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Download exact published app on the Mac runner
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+        run: |
+          set -euo pipefail
+          [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          mkdir -p "$RUNNER_TEMP/dock-release"
+          if [ "$(uname -m)" = arm64 ]; then ASSET="AnswerCue-${RELEASE_TAG#v}-arm64-mac.zip"; else ASSET="AnswerCue-${RELEASE_TAG#v}-mac.zip"; fi
+          gh release download "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --pattern "$ASSET" --dir "$RUNNER_TEMP/dock-release"
+          ditto -x -k "$RUNNER_TEMP/dock-release/$ASSET" "$RUNNER_TEMP/dock-release"
+          sudo ditto "$RUNNER_TEMP/dock-release/AnswerCue.app" /Applications/AnswerCue.app
+          xattr -dr com.apple.quarantine /Applications/AnswerCue.app || true
+      - name: Compile Dock and running-app snapshot helper
+        run: swiftc scripts/diagnostics/DockSnapshot.swift -o "$RUNNER_TEMP/dock-snapshot"
+      - name: Launch, reopen, quit, and inspect actual release
+        run: node scripts/diagnostics/mac-dock-check.mjs /Applications/AnswerCue.app "$RUNNER_TEMP/dock-evidence" "$RUNNER_TEMP/dock-snapshot"
+      - name: Upload diagnostic evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dock-evidence-${{ matrix.os }}
+          path: ${{ runner.temp }}/dock-evidence
+          if-no-files-found: warn
