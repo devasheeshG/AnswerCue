@@ -4548,7 +4548,12 @@ export class AppState {
     this._applyDisguise(this.disguiseMode);
   }
 
+  private _lastAppliedDisguise: string | undefined;
+
   private _applyDisguise(mode: 'terminal' | 'settings' | 'activity' | 'none'): void {
+    if (this._lastAppliedDisguise === mode) return;
+    const restoreDefaultIcon = this._lastAppliedDisguise !== undefined;
+    this._lastAppliedDisguise = mode;
     let appName = APP_NAME;
     let iconPath = "";
 
@@ -4617,13 +4622,8 @@ export class AppState {
 
     // 2. Update Electron application metadata outside stealth mode.
     // Dock visibility is controlled separately by MacDockVisibility.
-    if (!this.isUndetectable) {
-      app.setName(appName);
-    }
-
-    if (isMac) {
-      process.env.CFBundleName = appName.trim();
-    }
+    // Keep macOS bundle identity stable. Disguises change presentation only.
+    if (!isMac && !this.isUndetectable) app.setName(appName);
 
     // 3. Update App User Model ID (Windows Taskbar grouping)
     if (isWin) {
@@ -4637,7 +4637,7 @@ export class AppState {
 
       if (isMac) {
         // Skip dock icon update when dock is hidden to avoid potential flicker
-        if (!this.isUndetectable) {
+        if (!this.isUndetectable && (mode !== 'none' || restoreDefaultIcon)) {
           app.dock.setIcon(image);
         }
       } else {
@@ -4685,9 +4685,11 @@ export class AppState {
       this._disguiseTimers.push(ts);
     };
 
-    scheduleUpdate(200);
-    scheduleUpdate(1000);
-    scheduleUpdate(5000);
+    if (mode !== 'none') {
+      scheduleUpdate(200);
+      scheduleUpdate(1000);
+      scheduleUpdate(5000);
+    }
   }
 
   // Helper: broadcast an IPC event to all windows
@@ -4730,6 +4732,15 @@ async function initializeApp() {
 
   // 2. Wait for app to be ready
   await app.whenReady()
+  const dockProbeDirectory = process.env.ANSWERCUE_DOCK_PROBE_DIR;
+  if (dockProbeDirectory) {
+    try {
+      const { runPackagedDockProbe } = require('./services/PackagedDockProbe');
+      await runPackagedDockProbe(dockProbeDirectory);
+      app.exit(0);
+    } catch (error) { console.error('[packaged-dock-probe] FAIL', error); app.exit(1); }
+    return;
+  }
   const probeDirectory = process.env.ANSWERCUE_PACKAGE_SMOKE_DIR;
   if (probeDirectory) {
     try {
@@ -4753,12 +4764,8 @@ async function initializeApp() {
   if (process.platform === 'win32') {
     app.setAppUserModelId(APP_ID);
   }
-  if (process.platform !== 'darwin' || !isUndetectableOnStartup) {
-    app.setName(APP_NAME);
-    if (process.platform === 'darwin') {
-      process.env.CFBundleName = APP_NAME;
-    }
-  }
+  if (process.platform === 'darwin') delete process.env.CFBundleName;
+  if ((process.platform !== 'darwin' || !isUndetectableOnStartup) && app.getName() !== APP_NAME) app.setName(APP_NAME);
 
   // 3. Initialize Managers
   // Phase 6 — bind TelemetryService to the Electron userData path. The

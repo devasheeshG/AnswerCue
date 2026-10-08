@@ -307,3 +307,40 @@ jobs:
             exit 1
           fi
           gh release upload "$RELEASE_TAG" "${assets[@]}" --repo "$GITHUB_REPOSITORY" --clobber
+
+  golden-gate-dock:
+    name: Golden Gate packaged Dock validation
+    needs: build-macos
+    runs-on: xcode-27
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.release_tag || github.ref }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/download-artifact@v4
+        with:
+          name: answercue-macos
+          path: ${{ runner.temp }}/dock-candidate
+      - name: Install candidate in the test VM
+        run: |
+          set -euo pipefail
+          ZIP=$(find "$RUNNER_TEMP/dock-candidate" -maxdepth 1 -name '*-arm64-mac.zip' -print -quit)
+          ditto -x -k "$ZIP" "$RUNNER_TEMP/dock-candidate"
+          sudo ditto "$RUNNER_TEMP/dock-candidate/AnswerCue.app" /Applications/AnswerCue.app
+          xattr -dr com.apple.quarantine /Applications/AnswerCue.app || true
+          swiftc scripts/diagnostics/DockSnapshot.swift -o "$RUNNER_TEMP/dock-snapshot"
+      - name: Verify live Dock hide/show transitions
+        run: node scripts/diagnostics/verify-dock-transitions.mjs /Applications/AnswerCue.app "$RUNNER_TEMP/dock-transitions" "$RUNNER_TEMP/dock-snapshot"
+      - name: Verify full app launch and reopen
+        run: node scripts/diagnostics/mac-dock-check.mjs /Applications/AnswerCue.app "$RUNNER_TEMP/dock-launches" "$RUNNER_TEMP/dock-snapshot"
+      - name: Upload Dock evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: golden-gate-dock-evidence
+          path: |
+            ${{ runner.temp }}/dock-transitions
+            ${{ runner.temp }}/dock-launches
