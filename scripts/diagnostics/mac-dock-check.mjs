@@ -53,12 +53,13 @@ const executable = path.join(appPath, 'Contents/MacOS/AnswerCue');
 const log = fs.openSync(path.join(output, 'direct-launch.log'), 'w');
 const child = spawn(executable, ['--remote-debugging-port=9222', '--remote-debugging-address=127.0.0.1'], { stdio: ['ignore', log, log] });
 await sleep(3000); run(snapshotBinary, ['--dismiss-permissions'], true); await sleep(3000); snapshot('direct-launch');
+let debugSocket;
 try {
-  const pages = await (await fetch('http://127.0.0.1:9222/json/list')).json();
+  const pages = await (await fetch('http://127.0.0.1:9222/json/list', { signal: AbortSignal.timeout(5000) })).json();
   const page = pages.find(page => page.url.includes('window=launcher')) || pages.find(page => page.type === 'page');
   if (!page) throw new Error('No renderer debug target');
-  const socket = new WebSocket(page.webSocketDebuggerUrl);
-  await new Promise((resolve, reject) => { socket.addEventListener('open', resolve, { once: true }); socket.addEventListener('error', reject, { once: true }); });
+  const socket = new WebSocket(page.webSocketDebuggerUrl); debugSocket = socket;
+  await new Promise((resolve, reject) => { const timer = setTimeout(() => reject(new Error('Debug socket setup timed out')), 5000); socket.addEventListener('open', () => { clearTimeout(timer); resolve(); }, { once: true }); socket.addEventListener('error', error => { clearTimeout(timer); reject(error); }, { once: true }); });
   let id = 0;
   const evaluate = expression => new Promise((resolve, reject) => {
     const requestId = ++id;
@@ -73,7 +74,9 @@ try {
   }
   socket.close();
 } catch (error) { fs.writeFileSync(path.join(output, 'debug-toggle-error.log'), error.stack); }
+finally { debugSocket?.close(); }
 child.kill('SIGTERM'); await sleep(3000); const final = snapshot('direct-quit');
 for (const application of final.applications) run('kill', ['-KILL', String(application.pid)], true);
 child.kill('SIGKILL'); child.unref(); fs.closeSync(log);
 console.log(`Dock diagnostic evidence: ${output}`);
+process.exit(0);
