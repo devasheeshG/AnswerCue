@@ -423,7 +423,6 @@ import { ElevenLabsStreamingSTT } from "./audio/ElevenLabsStreamingSTT"
 import { OpenAIStreamingSTT } from "./audio/OpenAIStreamingSTT"
 import { AnswerCueProSTT } from "./audio/AnswerCueProSTT"
 import { ThemeManager } from "./ThemeManager"
-import { RAGManager } from "./rag/RAGManager"
 import { DatabaseManager } from "./db/DatabaseManager"
 import { warmupIntentClassifier } from "./llm"
 
@@ -491,7 +490,8 @@ export class AppState {
 
   private intelligenceManager: IntelligenceManager
   private themeManager: ThemeManager
-  private ragManager: RAGManager | null = null
+  private activeInterviewWorkspaceId?: string;
+  private ragManager: any = null
   private knowledgeOrchestrator: any = null
   private tray: Tray | null = null
   private updateAvailable: boolean = false
@@ -869,6 +869,7 @@ export class AppState {
       });
       // Restore custom notes for non-premium path
       try {
+        llmHelper.setPersonaPrompt(DatabaseManager.getInstance().getPersona());
         const savedNotes = DatabaseManager.getInstance().getCustomNotes();
         if (savedNotes) {
           llmHelper.setCustomNotes(savedNotes);
@@ -880,7 +881,6 @@ export class AppState {
     this.initializeRAGManager()
 
     // Check and prep Ollama embedding model
-    this.bootstrapOllamaEmbeddings()
 
 
     this.setupIntelligenceEvents()
@@ -990,66 +990,8 @@ export class AppState {
     this.broadcast('meeting-state-changed', { isActive: this.isMeetingActive });
   }
 
-  private async bootstrapOllamaEmbeddings() {
-    this._ollamaBootstrapPromise = (async () => {
-      try {
-        const { OllamaBootstrap } = require('./rag/OllamaBootstrap');
-        const bootstrap = new OllamaBootstrap();
-
-        // Fire and forget — don't await this before showing the window
-        const result = await bootstrap.bootstrap('nomic-embed-text', (status: string, percent: number) => {
-          // Send progress to renderer via IPC
-          this.broadcast('ollama:pull-progress', { status, percent });
-        });
-
-        if (result === 'pulled' || result === 'already_pulled') {
-          this.broadcast('ollama:pull-complete');
-          // Re-resolve the embedding provider given that Ollama might now be available
-          if (this.ragManager) {
-             console.log('[AppState] Ollama model ready, re-evaluating RAG pipeline provider');
-             const { CredentialsManager } = require('./services/CredentialsManager');
-             const cm = CredentialsManager.getInstance();
-             this.ragManager.initializeEmbeddings({
-                openaiKey: cm.getOpenaiApiKey() || process.env.OPENAI_API_KEY || undefined,
-                geminiKey: cm.getGeminiApiKey() || process.env.GOOGLE_API_KEY || process.env.GEMINI_API_KEY || undefined,
-                ollamaUrl: process.env.OLLAMA_URL || "http://localhost:11434",
-                providerDataScopes: (() => { try { const { SettingsManager } = require('./services/SettingsManager'); return SettingsManager.getInstance().get('providerDataScopes'); } catch { return undefined; } })()
-             });
-          }
-        }
-      } catch (err) {
-         console.error('[AppState] Failed to bootstrap Ollama:', err);
-      }
-    })();
-  }
-
   private initializeRAGManager(): void {
-    try {
-      const db = DatabaseManager.getInstance();
-      const sqliteDb = db.getDb();
-
-      if (sqliteDb) {
-        const { CredentialsManager } = require('./services/CredentialsManager');
-        const cm = CredentialsManager.getInstance();
-        const openaiKey = cm.getOpenaiApiKey() || process.env.OPENAI_API_KEY;
-        const geminiKey = cm.getGeminiApiKey() || process.env.GOOGLE_API_KEY || process.env.GEMINI_API_KEY;
-
-        const providerDataScopes = (() => { try { const { SettingsManager } = require('./services/SettingsManager'); return SettingsManager.getInstance().get('providerDataScopes'); } catch { return undefined; } })();
-        this.ragManager = new RAGManager({
-            db: sqliteDb,
-            dbPath: db.getDbPath(),
-            extPath: db.getExtPath(),
-            openaiKey,
-            geminiKey,
-            ollamaUrl: process.env.OLLAMA_URL || 'http://localhost:11434',
-            providerDataScopes
-        });
-        this.ragManager.setLLMHelper(this.processingHelper.getLLMHelper());
-        console.log('[AppState] RAGManager initialized');
-      }
-    } catch (error) {
-      console.error('[AppState] Failed to initialize RAGManager:', error);
-    }
+    // Documents and interview context are sent directly; no embedding index is created.
 
     // Initialize Knowledge Orchestrator
     try {
@@ -3314,7 +3256,22 @@ export class AppState {
     }
   }
 
+  private _startMeetingInFlight = false;
+  private _startMeetingPromise: Promise<void> | null = null;
+
   public async startMeeting(metadata?: any): Promise<void> {
+    if (this.isMeetingActive) { this.windowHelper.setWindowMode('overlay'); return; }
+    if (this._startMeetingPromise) return this._startMeetingPromise;
+    const attempt = this.startMeetingOnce(metadata);
+    this._startMeetingPromise = attempt;
+    try { await attempt; }
+    finally { if (this._startMeetingPromise === attempt) this._startMeetingPromise = null; }
+  }
+
+  private async startMeetingOnce(metadata?: any): Promise<void> {
+    if (this.isMeetingActive) { this.windowHelper.setWindowMode('overlay'); return; }
+    this._startMeetingInFlight = true;
+    try {
     console.log('[Main] Starting Meeting...', metadata);
 
     // If a previous endMeeting() is still draining STT in the background, wait
@@ -3329,6 +3286,13 @@ export class AppState {
         // teardown already logs; safe to swallow here
       }
       this._pendingTeardown = null;
+    }
+
+    const workspaceId = metadata?.interviewContext?.workspaceStateId;
+    if (workspaceId) {
+      const { InterviewWorkspaceStateManager } = require('./services/InterviewWorkspaceStateManager');
+      const previous = InterviewWorkspaceStateManager.getInstance().getWorkspace(workspaceId);
+      metadata = { ...metadata, resumeMeetingId: metadata.resumeMeetingId || previous?.meetingId };
     }
 
     // PR #173: Reset audio recovery state for fresh session
@@ -3386,6 +3350,7 @@ export class AppState {
     // the state event arrives, so the user only ever sees the overlay.
     this.windowHelper.setWindowMode('overlay');
 
+    this.activeInterviewWorkspaceId = metadata?.interviewContext?.workspaceStateId;
     const meetingGeneration = ++this._meetingGeneration;
     this.isMeetingActive = true;
     this.broadcastMeetingState()
@@ -3558,6 +3523,8 @@ export class AppState {
         }
       }
     })(); // Defer to next event loop tick — ensures IPC response reaches renderer before audio init
+
+    } finally { this._startMeetingInFlight = false; }
   }
 
   public async endMeeting(): Promise<void> {
@@ -3576,6 +3543,7 @@ export class AppState {
     // Cover the window between here and `_pendingTeardown` assignment, during which
     // the new in-flight-audio-init await below yields the event loop.
     this._endMeetingInFlight = true;
+    const pausedWorkspaceId = this.activeInterviewWorkspaceId;
     console.log('[Main] Ending Meeting...');
 
     // Phase 6 — meeting_stop telemetry. Emit BEFORE any teardown so a crash
@@ -3705,6 +3673,7 @@ export class AppState {
         // 3. Snapshot transcript + persist placeholder + queue title/summary LLM.
         //    intelligenceManager.stopMeeting itself runs LLM in background.
         const meetingId = await this.intelligenceManager.stopMeeting();
+        this.broadcast('interview-paused', { meetingId, workspaceStateId: pausedWorkspaceId });
 
         // 5. RAG cleanup — same logic as before, just inside the BG IIFE.
         if (meetingId) {
@@ -4044,7 +4013,7 @@ export class AppState {
     return this.themeManager
   }
 
-  public getRAGManager(): RAGManager | null {
+  public getRAGManager(): any {
     return this.ragManager;
   }
 
@@ -4973,7 +4942,6 @@ async function initializeApp() {
 
   // Pre-create detached overlay companion windows in background for faster first open
   appState.settingsWindowHelper.preloadWindow()
-  appState.modelSelectorWindowHelper.preloadWindow()
 
   // Restore Phone Mirror service if it was enabled in a previous session.
   // Failure here is non-fatal — the user can re-enable from Settings.

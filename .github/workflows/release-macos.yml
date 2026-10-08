@@ -198,7 +198,7 @@ jobs:
           if [ "${MACOS_SIGNING_AVAILABLE:-false}" = "true" ] && [ "${MACOS_NOTARIZATION_AVAILABLE:-false}" = "true" ]; then
             echo "Building signed + notarized macOS artifacts using ${MACOS_NOTARIZATION_STRATEGY:-unknown} notarization."
             npm run build
-            npm run build:electron
+            ANSWERCUE_PRODUCTION_BUILD=1 npm run build:electron
             ANSWERCUE_BUILD_ALL_MAC_ARCHES=1 npm run build:native
             node scripts/download-models.js
             node scripts/ensure-sharp-mac-deps.js
@@ -206,7 +206,7 @@ jobs:
           else
             echo "::warning::Building unsigned macOS artifacts because signing/notarization secrets are incomplete."
             npm run build
-            npm run build:electron
+            ANSWERCUE_PRODUCTION_BUILD=1 npm run build:electron
             ANSWERCUE_BUILD_ALL_MAC_ARCHES=1 npm run build:native
             node scripts/download-models.js
             node scripts/ensure-sharp-mac-deps.js

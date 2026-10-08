@@ -1,8 +1,4 @@
 import { Mode, ModeReferenceFile } from './ModesManager';
-import { ModeHybridRetriever, ModeRetrievedContext as HybridContext } from './modes/ModeHybridRetriever';
-import { VectorStore } from '../rag/VectorStore';
-import { EmbeddingPipeline } from '../rag/EmbeddingPipeline';
-import { DatabaseManager } from '../db/DatabaseManager';
 
 export interface ModeKnowledgeSource {
     id: string;
@@ -209,43 +205,12 @@ export class ModeContextRetriever {
      * Hybrid retrieval combining FTS/BM25 + vector semantic search.
      * Falls back to lexical-only if embedding provider is unavailable.
      */
-    async retrieveHybrid(mode: Mode, files: ModeReferenceFile[], options: RetrieveOptions): Promise<HybridContext> {
-        // Lazily create hybrid retriever on first use
-        if (!this._hybridRetriever) {
-            const db = DatabaseManager.getInstance().getDb();
-            const dbPath = DatabaseManager.getInstance().getDbPath();
-            if (!db) {
-                console.warn('[ModeContextRetriever] Database not available for hybrid retrieval');
-                // Route through the same throttle the hybrid retriever uses
-                // so a sticky DB outage during a 1-hour meeting can't spam
-                // hundreds of identical events (the retriever is called per
-                // transcript turn). See FINDING-007 in BUGFIX_LOG.
-                ModeHybridRetriever.emitFallbackTelemetryStatic({
-                    reason: 'db_unavailable',
-                    modeId: mode.id,
-                });
-                return { chunks: [], formattedContext: '', usedFallback: true, usedHybrid: false };
-            }
-            // VectorStore needs db, dbPath, and extPath - create minimal instance for mode retrieval
-            const vectorStore = new VectorStore(db, dbPath, '');
-            const embeddingPipeline = new EmbeddingPipeline(db, vectorStore);
-            this._hybridRetriever = new ModeHybridRetriever(db, vectorStore, embeddingPipeline);
-        }
-
-        const queryText = `${options.query}\n${options.transcript ?? ''}`.trim();
-        const hasTranscript = !!options.transcript && options.transcript.trim().length > 0;
-
-        const result = await this._hybridRetriever.retrieve({
-            query: queryText,
-            modeId: mode.id,
-            files,
-            tokenBudget: options.tokenBudget,
-            topK: options.topK,
-            hasTranscript
-        });
-
-        return result;
+    async retrieveHybrid(mode: Mode, files: ModeReferenceFile[], _options: RetrieveOptions): Promise<{ chunks: any[]; formattedContext: string; usedFallback: boolean; usedHybrid: boolean }> {
+        const sources: ModeKnowledgeSource[] = [
+            ...(mode.customContext.trim() ? [{ id: mode.id, type: 'custom_context' as const, content: mode.customContext }] : []),
+            ...files.map(file => ({ id: file.id, type: 'reference_file' as const, fileName: file.fileName, content: file.content })),
+        ];
+        const formattedContext = sources.map(source => `Reference: ${source.fileName || source.type}\n${source.content}`).join('\n\n');
+        return { chunks: [], formattedContext, usedFallback: !formattedContext, usedHybrid: false };
     }
-
-    private _hybridRetriever: ModeHybridRetriever | null = null;
 }

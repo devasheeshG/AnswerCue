@@ -1,7 +1,7 @@
+import { SearchableSelect as ModelSelect } from '../ui/SearchableSelect';
 import { OPENAI_SERVICE_TIERS, type OpenAiServiceTier } from '../../../electron/llm/openAiServiceTier';
 import React, { useEffect, useMemo, useState } from 'react';
-import { ChevronDown, Check } from 'lucide-react';
-import { isAllowedStandardCloudModel, STANDARD_CLOUD_MODELS, prettifyModelId } from '../../utils/modelUtils';
+import { STANDARD_CLOUD_MODELS, prettifyModelId } from '../../utils/modelUtils';
 import { ProviderCard } from './ProviderCard';
 
 type ProviderId = 'openai' | 'gemini' | 'claude';
@@ -27,7 +27,6 @@ const PROVIDER_DATA_SCOPE_OPTIONS: Array<{ key: ProviderDataScopeKey; label: str
     { key: 'screenshots', label: 'Screenshots', description: 'Screen context used for visual answers.' },
     { key: 'reference_files', label: 'Reference files', description: 'Selected docs and uploaded context.' },
     { key: 'profile_history', label: 'Profile history', description: 'Saved profile and prior interview context.' },
-    { key: 'embeddings', label: 'Embeddings', description: 'Document chunks sent for vector indexing.' },
     { key: 'post_call_summary', label: 'Post-call summary', description: 'Finished interview summaries.' },
 ];
 
@@ -49,59 +48,6 @@ const PROVIDER_KEY_URLS: Record<ProviderId, string> = {
     claude: 'https://console.anthropic.com/settings/keys',
 };
 
-const ModelSelect: React.FC<ModelSelectProps> = ({ value, options, onChange, placeholder = 'Select model', className = '' }) => {
-    const [isOpen, setIsOpen] = useState(false);
-    const containerRef = React.useRef<HTMLDivElement>(null);
-
-    useEffect(() => {
-        const handleClickOutside = (event: MouseEvent) => {
-            if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
-                setIsOpen(false);
-            }
-        };
-        document.addEventListener('mousedown', handleClickOutside);
-        return () => document.removeEventListener('mousedown', handleClickOutside);
-    }, []);
-
-    const selectedOption = options.find(option => option.id === value);
-    const paddingClass = className.includes('py-') ? '' : 'py-1.5';
-
-    return (
-        <div className="relative" ref={containerRef}>
-            <button
-                onClick={() => setIsOpen(!isOpen)}
-                className={`w-48 bg-bg-input border border-border-subtle rounded-lg px-3 ${paddingClass} ${className} text-xs text-text-primary focus:outline-none focus:border-accent-primary flex items-center justify-between hover:bg-bg-elevated transition-colors disabled:opacity-50 disabled:cursor-not-allowed`}
-                type="button"
-                disabled={options.length === 0}
-            >
-                <span className="truncate pr-2">{selectedOption ? selectedOption.name : placeholder}</span>
-                <ChevronDown size={14} className={`text-text-secondary transition-transform ${isOpen ? 'rotate-180' : ''}`} />
-            </button>
-
-            {isOpen && (
-                <div className="absolute top-full right-0 mt-1 w-full bg-bg-elevated border border-border-subtle rounded-lg shadow-xl z-50 max-h-60 overflow-y-auto animated fadeIn">
-                    <div className="p-1 space-y-0.5">
-                        {options.map((option) => (
-                            <button
-                                key={option.id}
-                                onClick={() => {
-                                    onChange(option.id);
-                                    setIsOpen(false);
-                                }}
-                                className={`w-full text-left px-3 py-2 text-xs rounded-md flex items-center justify-between group transition-colors ${value === option.id ? 'bg-bg-input hover:bg-bg-elevated text-text-primary' : 'text-text-secondary hover:bg-bg-input hover:text-text-primary'}`}
-                                type="button"
-                            >
-                                <span className="truncate">{option.name}</span>
-                                {value === option.id && <Check size={14} className="text-accent-primary shrink-0 ml-2" />}
-                            </button>
-                        ))}
-                    </div>
-                </div>
-            )}
-        </div>
-    );
-};
-
 export const AIProvidersSettings: React.FC = () => {
     const [apiKeys, setApiKeys] = useState<Record<ProviderId, string>>({
         openai: '',
@@ -113,8 +59,8 @@ export const AIProvidersSettings: React.FC = () => {
         gemini: false,
         claude: false,
     });
-    const [preferredModels, setPreferredModels] = useState<Record<string, string>>({});
     const [defaultModel, setDefaultModel] = useState('');
+    const [modelCache, setModelCache] = useState<Record<string, Array<{ id: string; label: string }>>>({});
     const [credentialsLoaded, setCredentialsLoaded] = useState(false);
     const [savedStatus, setSavedStatus] = useState<Record<string, boolean>>({});
     const [savingStatus, setSavingStatus] = useState<Record<string, boolean>>({});
@@ -137,11 +83,7 @@ export const AIProvidersSettings: React.FC = () => {
                         claude: !!creds.hasClaudeKey,
                     });
 
-                    const nextPreferred: Record<string, string> = {};
-                    if (creds.openaiPreferredModel) nextPreferred.openai = creds.openaiPreferredModel;
-                    if (creds.geminiPreferredModel) nextPreferred.gemini = creds.geminiPreferredModel;
-                    if (creds.claudePreferredModel && isAllowedStandardCloudModel('claude', creds.claudePreferredModel)) nextPreferred.claude = creds.claudePreferredModel;
-                    setPreferredModels(nextPreferred);
+
                 }
 
                 const result = await window.electronAPI?.getDefaultModel?.();
@@ -189,6 +131,12 @@ export const AIProvidersSettings: React.FC = () => {
         }
     };
 
+    useEffect(() => {
+        const refresh = () => window.electronAPI.getProviderModelCache().then(setModelCache).catch(console.error);
+        void refresh();
+        return window.electronAPI.onProviderModelCacheChanged(refresh);
+    }, []);
+
     const defaultModelOptions = useMemo<ModelOption[]>(() => {
         const options: ModelOption[] = [];
 
@@ -196,22 +144,16 @@ export const AIProvidersSettings: React.FC = () => {
             const config = STANDARD_CLOUD_MODELS[provider];
             if (!config || !hasStoredKey[provider]) continue;
 
-            config.ids.forEach((id, index) => {
-                options.push({ id, name: config.names[index] || prettifyModelId(id) });
-            });
-
-            const preferredModel = preferredModels[provider];
-            if (preferredModel && !config.ids.includes(preferredModel) && isAllowedStandardCloudModel(provider, preferredModel)) {
-                options.push({ id: preferredModel, name: prettifyModelId(preferredModel) });
-            }
+            const available = modelCache[provider] ?? config.ids.map((id, index) => ({ id, label: config.names[index] || prettifyModelId(id) }));
+            available.forEach(model => options.push({ id: model.id, name: `${model.label} · ${PROVIDER_LABELS[provider]}` }));
         }
 
         return options;
-    }, [hasStoredKey, preferredModels]);
+    }, [hasStoredKey, modelCache]);
 
     useEffect(() => {
         if (!credentialsLoaded || defaultModelOptions.length === 0) return;
-        if (defaultModel && defaultModelOptions.some(option => option.id === defaultModel)) return;
+        if (defaultModel) return;
 
         const nextModel = defaultModelOptions[0].id;
         setDefaultModel(nextModel);
@@ -286,10 +228,6 @@ export const AIProvidersSettings: React.FC = () => {
         }
     };
 
-    const handlePreferredModelChange = (provider: ProviderId, model: string) => {
-        setPreferredModels(prev => ({ ...prev, [provider]: model }));
-    };
-
     const handleProviderDataScopeChange = (scope: ProviderDataScopeKey, enabled: boolean) => {
         const next = { ...providerDataScopes, [scope]: enabled };
         setProviderDataScopes(next);
@@ -311,6 +249,9 @@ export const AIProvidersSettings: React.FC = () => {
                     </div>
                     <ModelSelect
                         value={defaultModel}
+                        label="Active model"
+                        searchable
+                        className="w-64"
                         options={defaultModelOptions}
                         placeholder={defaultModelOptions.length ? 'Select model' : 'Add a provider key first'}
                         onChange={(value) => {
@@ -334,7 +275,6 @@ export const AIProvidersSettings: React.FC = () => {
                             providerId={provider}
                             providerName={PROVIDER_LABELS[provider]}
                             apiKey={apiKeys[provider]}
-                            preferredModel={preferredModels[provider]}
                             hasStoredKey={hasStoredKey[provider]}
                             onKeyChange={(value) => setProviderKey(provider, value)}
                             onSaveKey={() => handleSaveKey(provider)}
@@ -346,30 +286,24 @@ export const AIProvidersSettings: React.FC = () => {
                             savedStatus={!!savedStatus[provider]}
                             keyPlaceholder={PROVIDER_KEY_PLACEHOLDERS[provider]}
                             keyUrl={PROVIDER_KEY_URLS[provider]}
-                            onPreferredModelChange={(model) => handlePreferredModelChange(provider, model)}
                         >
                             {provider === 'openai' && (
                                 <div className="mt-4 pt-4 border-t border-border-subtle">
                                     <div className="flex items-center justify-between gap-4">
                                         <label htmlFor="openai-response-tier" className="text-xs font-medium text-text-primary uppercase tracking-wide">Default response tier</label>
-                                        <select
-                                            id="openai-response-tier"
+                                        <ModelSelect
+                                            label="Default response tier"
                                             value={openAiTier}
                                             disabled={!tierLoaded || tierSaving}
-                                            onChange={event => void handleTierChange(event.target.value as OpenAiServiceTier)}
-                                            aria-describedby="openai-tier-description"
-                                            className="w-48 bg-bg-input border border-border-subtle rounded-lg px-3 py-2 text-xs text-text-primary focus:outline-none focus:border-accent-primary disabled:opacity-50"
-                                        >
-                                            {OPENAI_SERVICE_TIERS.map(tier => (
-                                                <option key={tier} value={tier}>{({ auto: 'Auto (project default)', default: 'Standard', fast: 'Fast (Priority)', ultrafast: 'Ultrafast' })[tier]}</option>
-                                            ))}
-                                        </select>
+                                            className="w-48"
+                                            onChange={value => void handleTierChange(value as OpenAiServiceTier)}
+                                            options={OPENAI_SERVICE_TIERS.map(tier => ({ id: tier, name: ({ auto: 'Auto (project default)', default: 'Standard', fast: 'Fast (Priority)' })[tier] }))}
+                                        />
                                     </div>
                                     <p id="openai-tier-description" className="text-[11px] text-text-secondary leading-relaxed mt-2">
                                         {openAiTier === 'auto' && 'Uses your OpenAI project’s default tier.'}
                                         {openAiTier === 'default' && 'Uses standard OpenAI pricing and performance.'}
                                         {openAiTier === 'fast' && 'Requests faster processing for your selected OpenAI model, at a higher token price.'}
-                                        {openAiTier === 'ultrafast' && 'Uses GPT 6 Astra for all OpenAI answers, including screenshots and background requests. Higher pricing and lower rate limits apply.'}
                                         {' '}Saved automatically for future OpenAI requests. Other providers and transcription keep their own settings.
                                     </p>
                                     {tierSaving && <p className="text-[11px] text-text-secondary mt-1" role="status">Saving…</p>}

@@ -56,6 +56,12 @@ Use the actual publication date. Historical v2.8.0 and v2.8.1 notes retain their
 6. Run the macOS workflow against that tag.
 7. Verify the workflow result, both DMGs, both ZIPs, updater metadata, and signing status before publishing.
 
+## Production Build
+
+The macOS workflow sets `ANSWERCUE_PRODUCTION_BUILD=1` when building Electron. This bundles the main process, preload, and speech worker without source maps or redundant development entry points. The build cleans its output first so removed modules cannot remain in the package.
+
+MiniLM embeddings, MobileBERT classification weights, vector-search modules, and sqlite-vec are removed as of v2.8.5. Retain Hugging Face Transformers and ONNX Runtime: local speech transcription still requires them. Moonshine downloads during setup, rather than being embedded in the DMG.
+
 ## macOS Artifacts
 
 - Apple Silicon: `AnswerCue-X.Y.Z-arm64.dmg` and `AnswerCue-X.Y.Z-arm64-mac.zip`.

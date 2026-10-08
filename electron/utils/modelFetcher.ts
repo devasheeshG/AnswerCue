@@ -4,7 +4,7 @@
  */
 
 import axios from 'axios';
-import { ALLOWED_CLAUDE_MODELS, isRetiredOpenAiModel } from '../llm/cloudModelCatalog';
+import { isRetiredOpenAiModel } from '../llm/cloudModelCatalog';
 
 export interface ProviderModel {
     id: string;
@@ -51,8 +51,9 @@ async function fetchOpenAIModels(apiKey: string): Promise<ProviderModel[]> {
     const filtered = models.filter((m: any) => {
         const id = (m.id || '').toLowerCase();
         if (isRetiredOpenAiModel(id)) return false;
+        if (/audio|realtime|transcribe|tts|embedding|image|instruct/.test(id)) return false;
         // Include gpt-4o variants
-        if (id.includes('gpt-4o')) return true;
+        if (/^gpt-(?:3\.5-turbo|4)/.test(id)) return true;
         // Include gpt-5 and above
         if (/gpt-[5-9]/.test(id)) return true;
         // Include o1/o3/o4 reasoning models (but not audio/realtime variants)
@@ -94,20 +95,24 @@ async function fetchGroqModels(apiKey: string): Promise<ProviderModel[]> {
 // ─── Anthropic ───────────────────────────────────────────────────────────────
 
 async function fetchAnthropicModels(apiKey: string): Promise<ProviderModel[]> {
-    const response = await axios.get('https://api.anthropic.com/v1/models', {
-        headers: {
-            'x-api-key': apiKey,
-            'anthropic-version': '2023-06-01',
-        },
-        timeout: 15000,
-    });
+    const models: any[] = [];
+    let afterId: string | undefined;
+    for (let page = 0; page < 50; page++) {
+        const response = await axios.get('https://api.anthropic.com/v1/models', {
+            headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
+            params: { limit: 100, ...(afterId ? { after_id: afterId } : {}) }, timeout: 15000,
+        });
+        models.push(...(response.data?.data || []));
+        if (!response.data?.has_more) break;
+        const next = response.data.last_id;
+        if (!next || next === afterId || page === 49) throw new Error('Model listing pagination did not complete');
+        afterId = next;
+    }
 
-    const models: any[] = response.data?.data || [];
-
-    // Keep the user-facing Claude list intentionally tight.
+    // Include all Claude models available to this key.
     const filtered = models.filter((m: any) => {
         const id = (m.id || '').toLowerCase();
-        return ALLOWED_CLAUDE_MODELS.has(id);
+        return id.startsWith('claude-');
     });
 
     return filtered
@@ -166,14 +171,19 @@ async function fetchDeepSeekModels(apiKey: string): Promise<ProviderModel[]> {
 // ─── Gemini ──────────────────────────────────────────────────────────────────
 
 async function fetchGeminiModels(apiKey: string): Promise<ProviderModel[]> {
-    const response = await axios.get(
-        `https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(apiKey)}`,
-        {
-            timeout: 15000,
-        }
-    );
-
-    const models: any[] = response.data?.models || [];
+    const models: any[] = [];
+    let pageToken: string | undefined;
+    for (let page = 0; page < 50; page++) {
+        const response = await axios.get('https://generativelanguage.googleapis.com/v1beta/models', {
+            headers: { 'x-goog-api-key': apiKey },
+            params: { pageSize: 100, ...(pageToken ? { pageToken } : {}) }, timeout: 15000,
+        });
+        models.push(...(response.data?.models || []));
+        const next = response.data?.nextPageToken;
+        if (!next) break;
+        if (next === pageToken || page === 49) throw new Error('Model listing pagination did not complete');
+        pageToken = next;
+    }
 
     // Only include Gemini 2.5+ models (gemini-2.5-*, gemini-3-*, etc.)
     // Must support generateContent

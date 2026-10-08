@@ -84,19 +84,9 @@ test('LLMHelper passes data scopes and policy to routeLLMProviders for fallback 
   assert.match(src, /scopePolicy,/);
 });
 
-test('Embedding provider resolver fails closed when embeddings scope is denied', () => {
-  const src = read('electron/rag/EmbeddingProviderResolver.ts');
+test('embedding providers have been removed from the application', () => { assert.equal(fs.existsSync(path.join(repoRoot, 'electron/rag/EmbeddingProviderResolver.ts')), false); });
 
-  assert.match(src, /assertProviderDataScopes\('openai_embeddings', \['embeddings'\], config\.providerDataScopes\)/);
-  assert.match(src, /assertProviderDataScopes\('gemini_embeddings', \['embeddings'\], config\.providerDataScopes\)/);
-});
-
-test('RAGManager forwards providerDataScopes from config and runtime keys', () => {
-  const src = read('electron/rag/RAGManager.ts');
-
-  assert.match(src, /providerDataScopes\?: ProviderDataScopePolicy/);
-  assert.match(src, /providerDataScopes: config\.providerDataScopes/);
-});
+test('the vector extension is no longer a production dependency', () => { const pkg=JSON.parse(read('package.json')); assert.equal(pkg.dependencies['sqlite-vec'], undefined); });
 
 test('SettingsManager exposes providerDataScopes setting', () => {
   const src = read('electron/services/SettingsManager.ts');
@@ -137,10 +127,4 @@ test('AIProvidersSettings renders cloud provider data scope controls wired to re
   assert.match(src, /onProviderDataScopesChanged\(setProviderDataScopes\)/);
 });
 
-test('main and ProcessingHelper hydrate ragManager.initializeEmbeddings with policy', () => {
-  const main = read('electron/main.ts');
-  const ph = read('electron/ProcessingHelper.ts');
-
-  assert.match(main, /providerDataScopes/);
-  assert.match(ph, /providerDataScopes/);
-});
+test('startup does not create an embedding index', () => { assert.doesNotMatch(read('electron/main.ts'), /new RAGManager/); assert.doesNotMatch(read('electron/ProcessingHelper.ts'), /initializeEmbeddings/); });

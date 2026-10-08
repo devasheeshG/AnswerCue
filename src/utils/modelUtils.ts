@@ -1,4 +1,4 @@
-import { OPENAI_CHAT_MODELS, CLAUDE_CHAT_MODELS, getCloudChatModel } from '../../electron/llm/cloudModelCatalog';
+import { isRetiredOpenAiModel, OPENAI_CHAT_MODELS, CLAUDE_CHAT_MODELS, getCloudChatModel } from '../../electron/llm/cloudModelCatalog';
 
 export const STANDARD_CLOUD_MODELS: Record<string, {
     hasKeyCheck: (creds: any) => boolean;
@@ -47,6 +47,9 @@ export const STANDARD_CLOUD_MODELS: Record<string, {
 export const isAllowedStandardCloudModel = (provider: string, modelId: string): boolean => {
     const config = STANDARD_CLOUD_MODELS[provider];
     if (!config) return true;
+    if (provider === 'claude') return modelId.startsWith('claude-');
+    if (provider === 'openai') return /^(gpt-|o[134])/.test(modelId) && !isRetiredOpenAiModel(modelId);
+    if (provider === 'gemini') return modelId.startsWith('gemini-');
     return config.ids.includes(modelId);
 };
 

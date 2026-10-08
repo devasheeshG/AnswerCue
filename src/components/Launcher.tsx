@@ -2,7 +2,6 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { ToggleLeft, ToggleRight, Search, ArrowRight, ArrowLeft, MoreHorizontal, Globe, Clock, ChevronRight, Settings, RefreshCw, Ghost, Plus, Mail, Link as LinkIcon, ChevronDown, Trash2, Bell, Check, Download, DownloadCloud, CheckCircle, AlertCircle, User, Sparkles, ArrowUpRight, ArrowUp, Brain, Mic, ShieldCheck, Paperclip, X, Speaker, Pencil, KeyRound, Monitor, HelpCircle, PanelLeft, PanelRight, Copy, MessageSquare, Play, AudioLines } from 'lucide-react';
 import { generateMeetingPDF } from '../utils/pdfGenerator';
 import icon from "./icon.png";
-import { ModelSelector } from './ui/ModelSelector';
 import { DEFAULT_OPENAI_MODEL, DEFAULT_CLAUDE_MODEL } from '../../electron/llm/cloudModelCatalog';
 import TopSearchPill from './TopSearchPill';
 import GlobalChatOverlay from './GlobalChatOverlay';
@@ -725,11 +724,11 @@ After the interview:
 - If the answer is not present in the available interview content, say that clearly.
 - Keep answers concise unless the user asks for a detailed review.`;
 
-const getInterviewWorkspaceChatPrompt = (phase: PrepMessage['phase']) => {
-    if (phase === 'after') return INTERVIEW_WORKSPACE_AFTER_PROMPT;
-    if (phase === 'during') return INTERVIEW_WORKSPACE_DURING_PROMPT;
-    return INTERVIEW_WORKSPACE_BEFORE_PROMPT;
-};
+const getInterviewWorkspaceChatPrompt = (_phase: PrepMessage['phase']) => `You are the user's ongoing interview assistant.
+Treat preparation chat, recorded interview turns, and chat between live segments as one continuous conversation.
+Use the supplied background, company context, complete documents, custom instructions, and Persona.
+Answer the current request directly. Do not automatically switch to a review or critique merely because capture is paused.
+Do not invent experience or interview details. Ask for missing information when needed.`;
 
 const buildInterviewContextMarkdown = (messages: PrepMessage[], documents: InterviewContextDocument[]) => {
     const parts: string[] = [];
@@ -778,7 +777,7 @@ const buildLiveTranscriptTimeline = (segments: LiveTranscriptSegment[]): Transcr
 };
 
 const formatWorkspaceConversation = (messages: PrepMessage[]) => {
-    const turns = messages.filter(message => message.content.trim()).slice(-40);
+    const turns = messages.filter(message => message.content.trim());
     if (!turns.length) return '';
     return turns.map(message => {
         const phase = message.phase || 'before';
@@ -811,7 +810,8 @@ const buildInterviewWorkspaceChatContext = (
 
     if (meeting) {
         parts.push(`## Saved Interview\n\n${buildMeetingChatContext(meeting)}`);
-    } else if (liveTranscript.length) {
+    }
+    if (liveTranscript.length) {
         const liveTimeline = buildLiveTranscriptTimeline(liveTranscript);
         parts.push(`## Live Interview Transcript So Far\n\n${liveTimeline.map(item => {
             const partial = item.isLivePartial ? ' partial' : '';
@@ -832,7 +832,7 @@ const buildMeetingChatContext = (meeting: Meeting) => {
         parts.push(`KEY POINTS:\n${meeting.detailedSummary.keyPoints.map(item => `- ${item}`).join('\n')}`);
     }
 
-    const timeline = buildTranscriptTimeline(meeting).slice(-120);
+    const timeline = buildTranscriptTimeline(meeting);
     if (timeline.length) {
         parts.push(`TRANSCRIPT AND AI RESPONSES:\n${timeline.map(item => {
             const prompt = item.question ? `\n  Prompt: ${item.question}` : '';
@@ -1084,6 +1084,7 @@ interface InterviewPrepPanelProps {
     onDraftChange: (value: string) => void;
     onSubmit: () => void;
     onStartInterview: () => void;
+    onStopInterview: () => void;
     onUploadDoc: () => void;
     onToggleDoc: (id: string) => void;
     onDeleteDoc: (id: string) => void;
@@ -1107,6 +1108,7 @@ const InterviewPrepPanel: React.FC<InterviewPrepPanelProps> = ({
     onDraftChange,
     onSubmit,
     onStartInterview,
+    onStopInterview,
     onUploadDoc,
     onToggleDoc,
     onDeleteDoc,
@@ -1153,7 +1155,7 @@ const InterviewPrepPanel: React.FC<InterviewPrepPanelProps> = ({
     const preparedCharCount = contextMarkdown.trim().length;
     const liveItems = buildLiveTranscriptTimeline(liveTranscript);
     const savedItems = meeting ? buildTranscriptTimeline(meeting) : [];
-    const transcriptItems = meeting ? savedItems : liveItems;
+    const transcriptItems = meeting ? [...savedItems, ...liveItems] : liveItems;
     const hasInterviewStarted = isMeetingActive || liveItems.length > 0 || Boolean(meeting);
     const isFinalizing = isMeetingFinalizing(meeting);
     const hasInterviewFinished = Boolean(meeting) || (!isMeetingActive && liveItems.length > 0);
@@ -1161,7 +1163,7 @@ const InterviewPrepPanel: React.FC<InterviewPrepPanelProps> = ({
     const duringMessages = messages.filter(message => message.phase === 'during');
     const afterMessages = messages.filter(message => message.phase === 'after');
     const busy = conversationState === 'waiting' || conversationState === 'streaming';
-    const panelTitle = meeting ? 'Follow-up' : isMeetingActive ? 'Live interview' : 'Preparation';
+    const panelTitle = isMeetingActive ? 'Live interview' : 'Chat';
     const composerPlaceholder = meeting
         ? 'Ask about this interview'
         : isMeetingActive
@@ -1264,7 +1266,7 @@ const InterviewPrepPanel: React.FC<InterviewPrepPanelProps> = ({
         );
     };
 
-    const renderTranscriptItems = () => {
+    const renderTranscriptItems = (items = transcriptItems) => {
         if (!transcriptItems.length) {
             return isMeetingActive ? (
                 <div className={`rounded-lg border px-4 py-5 text-center ${isLight ? 'bg-bg-elevated border-border-subtle' : 'bg-bg-secondary border-border-subtle'}`}>
@@ -1275,7 +1277,7 @@ const InterviewPrepPanel: React.FC<InterviewPrepPanelProps> = ({
             ) : null;
         }
 
-        return transcriptItems.map((item) => {
+        return items.map((item) => {
             const isMe = item.role === 'me';
             const isAi = item.role === 'ai';
             const isScreenshot = item.role === 'screenshot';
@@ -1353,11 +1355,12 @@ const InterviewPrepPanel: React.FC<InterviewPrepPanelProps> = ({
     return (
         <div className="workspace-conversation">
             <div className="workspace-conversation-toolbar">
-                <div className="workspace-phase" data-live={isMeetingActive && !meeting}>
-                    {meeting ? <CheckCircle size={14} /> : isMeetingActive ? <AudioLines size={14} /> : <MessageSquare size={14} />}
+                <div className="workspace-phase" data-live={isMeetingActive}>
+                    {isMeetingActive ? <AudioLines size={14} /> : <MessageSquare size={14} />}
                     <span>{panelTitle}</span>
                 </div>
-                {!meeting && (
+                <div className="flex items-center gap-2">
+                    {isMeetingActive && <button type="button" onClick={onStopInterview} className="workspace-start-button">Stop interview</button>}
                     <button
                         onClick={onStartInterview}
                         className="workspace-start-button"
@@ -1373,11 +1376,11 @@ const InterviewPrepPanel: React.FC<InterviewPrepPanelProps> = ({
                         ) : (
                             <>
                                 <Play size={14} fill="currentColor" />
-                                Start interview
+                                {meeting ? 'Restart interview' : 'Start interview'}
                             </>
                         )}
                     </button>
-                )}
+                </div>
             </div>
 
             <div className="flex-1 min-h-0 flex flex-col relative">
@@ -1407,12 +1410,12 @@ const InterviewPrepPanel: React.FC<InterviewPrepPanelProps> = ({
                             </div>
                         ) : (
                             <>
-                                {renderChatMessages(beforeMessages)}
-                                {hasInterviewStarted && renderDivider('Interview started', 'started')}
-                                {renderTranscriptItems()}
-                                {duringMessages.length > 0 && renderChatMessages(duringMessages)}
-                                {hasInterviewFinished && renderDivider(isFinalizing ? 'Finalizing interview' : 'Interview finished', isFinalizing ? 'finalizing' : 'finished')}
-                                {renderChatMessages(afterMessages)}
+                                {[...messages.map(message => ({ kind: 'chat' as const, time: message.createdAt, message })),
+                                    ...transcriptItems.map(item => ({ kind: 'transcript' as const, time: item.timestamp, item }))]
+                                    .sort((a, b) => a.time - b.time)
+                                    .map(entry => entry.kind === 'chat'
+                                        ? <React.Fragment key={`chat-${entry.message.id}`}>{renderChatMessages([entry.message])}</React.Fragment>
+                                        : <React.Fragment key={`transcript-${entry.item.id}`}>{renderTranscriptItems([entry.item])}</React.Fragment>)}
                                 {errorMessage && <p className="text-[12px] text-red-400">{errorMessage}</p>}
                             </>
                         )}
@@ -2017,6 +2020,10 @@ const Launcher: React.FC<LauncherProps> = ({ onStartMeeting, onOpenSettings, onP
     const [isGlobalChatOpen, setIsGlobalChatOpen] = useState(false);
     const [submittedGlobalQuery, setSubmittedGlobalQuery] = useState('');
 
+    const workspaceIdRef = useRef(workspaceStateId);
+    workspaceIdRef.current = workspaceStateId;
+    const meetingActiveRef = useRef(isMeetingActive);
+    meetingActiveRef.current = isMeetingActive;
     const pendingOpenLatestInterviewRef = useRef(false);
     const selectedMeetingRef = useRef<Meeting | null>(null);
     const {
@@ -2565,19 +2572,28 @@ const Launcher: React.FC<LauncherProps> = ({ onStartMeeting, onOpenSettings, onP
         let removeMeetingStateListener: (() => void) | undefined;
         if (window.electronAPI?.onMeetingStateChanged) {
             removeMeetingStateListener = window.electronAPI.onMeetingStateChanged(({ isActive }) => {
+                meetingActiveRef.current = isActive;
                 setIsMeetingActive((wasActive) => {
                     if (isActive) {
                         pendingOpenLatestInterviewRef.current = false;
-                        selectMeeting(null);
                         setLiveTranscript([]);
                     } else if (wasActive) {
-                        pendingOpenLatestInterviewRef.current = true;
+                        pendingOpenLatestInterviewRef.current = false;
                     }
                     return isActive;
                 });
             });
         }
 
+        const removePausedListener = window.electronAPI?.onInterviewPaused?.(async ({ meetingId, workspaceStateId: pausedWorkspaceId }) => {
+            if (!meetingId || !mounted || (pausedWorkspaceId && pausedWorkspaceId !== workspaceIdRef.current)) return;
+            const meeting = await window.electronAPI.getMeetingDetails(meetingId);
+            if (!meeting || !mounted) return;
+            if (pausedWorkspaceId && pausedWorkspaceId !== workspaceIdRef.current) return;
+            if (!meetingActiveRef.current) setLiveTranscript([]);
+            selectMeeting(meeting);
+            // Keep the current chat/draft and any in-flight reply intact. The workspace id is unchanged.
+        });
         let removeLiveTranscriptListener: (() => void) | undefined;
         if (window.electronAPI?.onNativeAudioTranscript) {
             removeLiveTranscriptListener = window.electronAPI.onNativeAudioTranscript((transcript) => {
@@ -2719,6 +2735,7 @@ const Launcher: React.FC<LauncherProps> = ({ onStartMeeting, onOpenSettings, onP
             if (removeMeetingsListener) removeMeetingsListener();
             if (removeUndetectableListener) removeUndetectableListener();
             if (removeMeetingStateListener) removeMeetingStateListener();
+            removePausedListener?.();
             if (removeLiveTranscriptListener) removeLiveTranscriptListener();
             liveAiCleanups.forEach(cleanup => cleanup());
             if (removeModelListener) removeModelListener();
@@ -3285,7 +3302,7 @@ const Launcher: React.FC<LauncherProps> = ({ onStartMeeting, onOpenSettings, onP
         const note = prepDraft.trim() || (selectedDocs.length > 0 ? 'Use the attached documents as context for this interview.' : '');
         if (!note || workspaceConversationState === 'waiting' || workspaceConversationState === 'streaming') return;
 
-        const phase: PrepMessage['phase'] = selectedMeeting ? 'after' : isMeetingActive ? 'during' : 'before';
+        const phase: PrepMessage['phase'] = isMeetingActive ? 'during' : selectedMeeting ? 'after' : 'before';
         const messageAttachments = selectedDocs.map(docToPrepAttachment);
         const userMessage: PrepMessage = {
             id: genMessageId(),
@@ -3448,9 +3465,11 @@ const Launcher: React.FC<LauncherProps> = ({ onStartMeeting, onOpenSettings, onP
         });
         onStartMeeting({
             source: 'manual',
+            resumeMeetingId: selectedMeeting?.id,
+            title: selectedMeeting?.title === 'Processing...' ? undefined : selectedMeeting?.title,
             interviewContext: {
                 workspaceStateId,
-                contextMarkdown: prepContextMarkdown,
+                contextMarkdown: buildInterviewWorkspaceChatContext(prepMessages, interviewDocs.filter(doc => interviewDocumentIds.includes(doc.id)), selectedMeeting, liveTranscript, 'before'),
                 selectedDocumentIds: interviewDocumentIds,
                 messageCount: prepMessages.filter(message => message.role === 'user').length,
             },
@@ -4437,7 +4456,7 @@ const Launcher: React.FC<LauncherProps> = ({ onStartMeeting, onOpenSettings, onP
 	                                    </div>
 			                                    <div className="workspace-main-content">
 		                                        <InterviewPrepPanel
-                                                    key={selectedMeeting?.id || 'current-interview-workspace'}
+                                                    key={workspaceStateId}
                                                     isLight={isLight}
                                                     isMeetingActive={isMeetingActive}
                                                     meeting={selectedMeeting}
@@ -4455,6 +4474,7 @@ const Launcher: React.FC<LauncherProps> = ({ onStartMeeting, onOpenSettings, onP
                                                     onDraftChange={setPrepDraft}
                                                     onSubmit={submitPrepMessage}
                                                     onStartInterview={startPreparedInterview}
+                                                    onStopInterview={() => { void window.electronAPI.endMeeting(); }}
                                                     onUploadDoc={handleUploadInterviewDoc}
                                                     onToggleDoc={toggleSelectedDoc}
                                                     onDeleteDoc={handleDeleteInterviewDoc}
@@ -4465,7 +4485,6 @@ const Launcher: React.FC<LauncherProps> = ({ onStartMeeting, onOpenSettings, onP
                                 <aside id="interview-settings" aria-label="Interview settings" className={`workspace-inspector ${inspectorOpen ? '' : 'workspace-panel-closed'}`}>
                                     <div className="workspace-inspector-header">
                                         <h2>Interview settings</h2>
-                                        <button className="workspace-icon-button" title="Hide interview settings" aria-label="Close interview settings panel" onClick={() => setInspectorOpen(false)}><PanelRight size={15} /></button>
                                     </div>
                                     <div className="workspace-inspector-scroll custom-scrollbar">
                                         {setupIssues.length > 0 && (
@@ -4488,29 +4507,6 @@ const Launcher: React.FC<LauncherProps> = ({ onStartMeeting, onOpenSettings, onP
                                                 </div>
                                             </section>
                                         )}
-
-                                        <section className="workspace-inspector-section">
-                                            <div className="flex items-center justify-between gap-2 mb-3">
-                                                <div className="min-w-0">
-                                                    <h3 className="text-[12px] font-semibold text-text-primary">AI model</h3>
-                                                    <p className="text-[11px] text-text-tertiary mt-1">{readiness.aiProvider}</p>
-                                                </div>
-                                                <button
-                                                    onClick={() => refreshReadiness()}
-                                                    title="Refresh model"
-                                                    className={`h-7 w-7 shrink-0 rounded-md flex items-center justify-center text-text-tertiary hover:text-text-primary ${isLight ? 'hover:bg-black/8' : 'hover:bg-white/10'}`}
-                                                >
-                                                    <RefreshCw size={12} className={readiness.loading ? 'animate-spin text-accent-primary' : ''} />
-                                                </button>
-                                            </div>
-                                            <ModelSelector
-                                                currentModel={currentModel}
-                                                onSelectModel={handleModelSelect}
-                                                variant="workspace"
-                                                placement="down"
-                                                className="w-full !max-w-none justify-between"
-                                            />
-                                        </section>
 
                                         <section className="workspace-inspector-section">
                                             <div className="flex items-center justify-between gap-2 mb-3">

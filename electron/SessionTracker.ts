@@ -50,6 +50,7 @@ export class SessionTracker {
         title?: string;
         calendarEventId?: string;
         source?: 'manual' | 'calendar';
+        resumeMeetingId?: string;
         interviewContext?: {
             workspaceStateId?: string;
             contextMarkdown?: string;
@@ -106,9 +107,7 @@ export class SessionTracker {
         const prepared = typeof raw === 'string' ? raw.trim() : '';
         if (!prepared) return '';
 
-        return prepared.length > 30000
-            ? `${prepared.slice(0, 30000)}\n\n[...interview preparation context truncated...]`
-            : prepared;
+        return prepared;
     }
 
     public clearMeetingMetadata(): void {

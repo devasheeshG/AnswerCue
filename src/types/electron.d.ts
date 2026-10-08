@@ -460,6 +460,9 @@ export interface ElectronAPI {
   setTavilyApiKey: (apiKey: string) => Promise<{ success: boolean; error?: string }>
 
   // Dynamic Model Discovery
+  onInterviewPaused: (callback: (data: { meetingId: string | null; workspaceStateId?: string }) => void) => () => void;
+  getProviderModelCache: () => Promise<Record<string, Array<{ id: string; label: string }>>>;
+  onProviderModelCacheChanged: (callback: () => void) => () => void;
   fetchProviderModels: (provider: 'gemini' | 'groq' | 'openai' | 'claude' | 'deepseek', apiKey: string) => Promise<{ success: boolean; models?: {id: string, label: string}[]; error?: string }>
   setProviderPreferredModel: (provider: 'gemini' | 'groq' | 'openai' | 'claude' | 'deepseek', modelId: string) => Promise<void>
 

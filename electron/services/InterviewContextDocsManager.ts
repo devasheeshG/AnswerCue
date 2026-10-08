@@ -88,27 +88,13 @@ function decodeTextFile(buffer: Buffer, fileName: string, ext: string): string {
 }
 
 function normalizeMarkdown(input: string, fileName: string): string {
-  const normalized = input
-    .replace(/\r\n/g, '\n')
-    .replace(/\r/g, '\n')
-    .replace(/[ \t]+\n/g, '\n')
-    .replace(/\n{4,}/g, '\n\n\n')
-    .trim();
-
-  if (!normalized) {
-    throw new Error(`"${fileName}" parsed to empty text.`);
-  }
-
+  const normalized = input.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+  if (!normalized.trim()) throw new Error(`"${fileName}" parsed to empty text.`);
   return normalized;
 }
 
 function plainTextToMarkdown(input: string, fileName: string): string {
-  const body = normalizeMarkdown(input, fileName)
-    .split(/\n{2,}/)
-    .map(part => part.trim())
-    .filter(Boolean)
-    .join('\n\n');
-  return body;
+  return normalizeMarkdown(input, fileName);
 }
 
 function extensionToFileType(ext: string): InterviewContextDocument['fileType'] {

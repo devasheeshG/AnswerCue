@@ -55,7 +55,7 @@ function extractMethodBody(methodName) {
   return mainSource.slice(start, i - 1);
 }
 
-const startMeetingBody = extractMethodBody('startMeeting');
+const startMeetingBody = extractMethodBody('startMeetingOnce');
 const endMeetingBody = extractMethodBody('endMeeting');
 
 test('AppState declares _audioInitController and _audioInitPromise fields', () => {

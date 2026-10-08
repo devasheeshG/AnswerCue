@@ -12,6 +12,8 @@ const fs = require('fs');
 const rootDir = path.resolve(__dirname, '..');
 const outDir = path.resolve(rootDir, 'dist-electron');
 
+const production = process.env.ANSWERCUE_PRODUCTION_BUILD === '1';
+fs.rmSync(outDir, { recursive: true, force: true });
 const entryPoints = [];
 
 // Function to recursively find all .ts files in a directory
@@ -27,7 +29,9 @@ const findTs = (dir) => {
 
 const electronDir = path.resolve(rootDir, 'electron');
 if (fs.existsSync(electronDir)) {
-  entryPoints.push(...findTs(electronDir).map(f => path.relative(rootDir, f)));
+  entryPoints.push(...(production
+    ? ['electron/main.ts', 'electron/preload.ts', 'electron/audio/whisper/whisperWorker.ts']
+    : findTs(electronDir).map(f => path.relative(rootDir, f))));
 }
 
 // Also include premium electron files if they exist
@@ -49,8 +53,8 @@ build({
   target: 'node20',
   format: 'cjs',          // Electron loads package.json main as CommonJS in this repo
                           // (package.json has no "type": "module").
-  external: ['electron', 'better-sqlite3', 'keytar', 'sqlite-vec'],
-  sourcemap: true,
+  external: ['electron', 'better-sqlite3', 'keytar'],
+  sourcemap: !production,
   jsx: 'automatic',
   loader: {
     '.ts': 'ts',

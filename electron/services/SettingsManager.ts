@@ -13,6 +13,7 @@ export interface AppSettings {
     actionButtonMode?: 'recap' | 'brainstorm';
     groqFastTextMode?: boolean;
     openAiServiceTier?: OpenAiServiceTier;
+    providerModelCache?: Record<string, Array<{ id: string; label: string }>>;
     codexCliEnabled?: boolean;
     codexCliPath?: string;
     codexCliModel?: string;

@@ -58,12 +58,14 @@ function fixture() {
     },
   });
   let quitting = false;
+  let stops = 0;
   const helper = new exports.WindowHelper({
     getDisguise: () => 'none', getUndetectable: () => false,
     getIsMeetingActive: () => true, isQuitting: () => quitting,
+    endMeeting: async () => { stops++; },
   });
   helper.createWindow();
-  return { helper, windows, quit: () => { quitting = true; } };
+  return { helper, windows, stops: () => stops, quit: () => { quitting = true; } };
 }
 
 test('a visible interview overlay cannot cancel application shutdown', () => {
@@ -84,4 +86,12 @@ test('closing and reopening the launcher destroys its old overlay instead of orp
   helper.createWindow();
   assert.notEqual(helper.getOverlayWindow(), oldOverlay);
   assert.equal(windows.filter(window => !window.isDestroyed()).length, 2);
+});
+
+test('closing the live popup stops the interview rather than leaving capture running', () => {
+  const { helper, stops } = fixture();
+  const overlay = helper.getOverlayWindow();
+  overlay.show();
+  assert.equal(overlay.close(), false);
+  assert.equal(stops(), 1);
 });

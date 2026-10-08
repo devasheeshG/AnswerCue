@@ -4893,51 +4893,7 @@ Provide only the answer, nothing else.`;
                 {/* Bottom Row */}
                 <div className="flex items-center justify-between mt-3 px-0.5">
                   <div className="flex items-center gap-1.5">
-                    <button
-                      data-model-selector-toggle="true"
-                      onClick={(e) => {
-                        // Calculate position for detached window
-                        if (!contentRef.current) return;
-                        const contentRect = contentRef.current.getBoundingClientRect();
-                        const buttonRect = e.currentTarget.getBoundingClientRect();
-                        const GAP = 8;
-
-                        const x = window.screenX + buttonRect.left;
-                        const y = window.screenY + contentRect.bottom + GAP;
-
-                        window.electronAPI.toggleModelSelector({ x, y, activate: false });
-                      }}
-                      className={`
-                                                flex items-center gap-2 px-3 py-1.5
-                                                border rounded-lg transition-colors
-                                                text-xs font-medium w-[140px]
-                                                interaction-base interaction-press
-                                                ${controlSurfaceClass}
-                                            `}
-                      style={appearance.controlStyle}
-                    >
-                      <span className="truncate min-w-0 flex-1">
-                        {(() => {
-                          const m = currentModel;
-                          const codexCliName = getCodexCliModelDisplayName(m);
-                          if (codexCliName) return codexCliName;
-                          const cloudName = getCloudModelDisplayName(m);
-                          if (cloudName) return cloudName;
-                          if (m.startsWith('ollama-')) return m.replace('ollama-', '');
-                          if (m === 'gemini-3.5-flash') return 'Gemini 3.5 Flash';
-                          if (m === 'gemini-3.1-flash-lite-preview') return 'Gemini 3.1 Flash';
-                          if (m === 'gemini-3.1-pro-preview') return 'Gemini 3.1 Pro';
-                          if (m === 'llama-3.3-70b-versatile') return 'Groq Llama 3.3';
-                          if (m === 'gpt-5.4') return 'GPT 5.4';
-                          if (m === 'claude-opus-4-8') return 'Opus 4.8';
-                          if (m === 'claude-opus-4-7') return 'Opus 4.7';
-                          if (m === 'claude-opus-4-6') return 'Opus 4.6';
-                          if (m === 'claude-sonnet-4-6') return 'Sonnet 4.6';
-                          return m;
-                        })()}
-                      </span>
-                      <ChevronDown size={14} className="shrink-0 transition-transform" />
-                    </button>
+                    <span className="px-2 text-xs overlay-text-muted" title="Change the active model in Settings → AI Providers">{getCloudModelDisplayName(currentModel) || currentModel}</span>
 
                     <div className="w-px h-3 mx-1" style={appearance.dividerStyle} />
 

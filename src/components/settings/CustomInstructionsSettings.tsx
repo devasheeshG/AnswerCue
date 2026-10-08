@@ -46,7 +46,7 @@ const buildFileBlock = (fileName: string, content: string) => {
     return [
         `${FILE_BLOCK_START} name="${safeName}" -->`,
         `<custom_instruction_file name="${safeName}">`,
-        content.trim(),
+        content,
         '</custom_instruction_file>',
         FILE_BLOCK_END,
     ].join('\n');
@@ -65,45 +65,68 @@ export const CustomInstructionsSettings: React.FC = () => {
     const [personaSaved, setPersonaSaved] = useState(false);
     const [isImporting, setIsImporting] = useState(false);
     const [error, setError] = useState('');
+    const [instructionsLoaded, setInstructionsLoaded] = useState(false);
+    const [personaLoaded, setPersonaLoaded] = useState(false);
     const instructionsDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const personaDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+    const manualRef = useRef(manualInstructions);
+    const fileRef = useRef(fileBlock);
+    const personaRef = useRef(persona);
+    const pendingNotes = useRef(false);
+    const pendingPersona = useRef(false);
+    manualRef.current = manualInstructions;
+    fileRef.current = fileBlock;
+    personaRef.current = persona;
+
+    const attachedFileText = useMemo(() => {
+        const body = fileBlock.match(/<custom_instruction_file\b[^>]*>([\s\S]*?)<\/custom_instruction_file>/)?.[1] || '';
+        return body.replace(/^\n/, '').replace(/\n$/, '');
+    }, [fileBlock]);
+    const totalCharacterCount = manualInstructions.length + attachedFileText.length;
     const attachedFileName = useMemo(() => extractFileName(fileBlock), [fileBlock]);
 
     useEffect(() => {
         window.electronAPI?.profileGetNotes?.()
             .then((result) => {
-                if (!result?.success) return;
+                if (!result?.success) { setError('Could not load saved instructions. Reopen Settings to retry.'); return; }
                 const content = result.content || '';
                 setManualInstructions(stripFileBlocks(content));
                 setFileBlock(extractFileBlock(content));
+                setInstructionsLoaded(true);
             })
             .catch(() => {});
 
         window.electronAPI?.profileGetPersona?.()
             .then((result) => {
-                if (result?.success) setPersona(result.content || '');
+                if (result?.success) { setPersona(result.content || ''); setPersonaLoaded(true); }
+                else setError('Could not load saved Persona. Reopen Settings to retry.');
             })
             .catch(() => {});
 
         return () => {
             if (instructionsDebounceRef.current) clearTimeout(instructionsDebounceRef.current);
             if (personaDebounceRef.current) clearTimeout(personaDebounceRef.current);
+            if (pendingNotes.current) void window.electronAPI?.profileSaveNotes?.(combineInstructions(manualRef.current, fileRef.current)).catch(console.error);
+            if (pendingPersona.current) void window.electronAPI?.profileSavePersona?.(personaRef.current).catch(console.error);
         };
     }, []);
 
-    const saveInstructions = async (nextManual: string, nextFileBlock = fileBlock) => {
+    const saveInstructions = async (nextManual: string, nextFileBlock = fileRef.current) => {
         const content = combineInstructions(nextManual, nextFileBlock);
         const result = await window.electronAPI?.profileSaveNotes?.(content);
         if (result && !result.success) {
             setError(result.error || 'Could not save custom instructions.');
             return;
         }
-        setInstructionsSaved(true);
+        pendingNotes.current = combineInstructions(manualRef.current, fileRef.current) !== content;
+        setInstructionsSaved(!pendingNotes.current);
         setTimeout(() => setInstructionsSaved(false), 1800);
     };
 
     const handleManualChange = (value: string) => {
+        manualRef.current = value;
+        pendingNotes.current = true;
         setManualInstructions(value);
         setInstructionsSaved(false);
         setError('');
@@ -126,8 +149,9 @@ export const CustomInstructionsSettings: React.FC = () => {
 
             const nextFileBlock = buildFileBlock(result.fileName || 'custom-instructions.md', result.content || '');
             if (instructionsDebounceRef.current) clearTimeout(instructionsDebounceRef.current);
+            fileRef.current = nextFileBlock;
             setFileBlock(nextFileBlock);
-            await saveInstructions(manualInstructions, nextFileBlock);
+            await saveInstructions(manualRef.current, nextFileBlock);
         } catch (err: any) {
             setError(err?.message || 'Could not import the selected file.');
         } finally {
@@ -138,11 +162,14 @@ export const CustomInstructionsSettings: React.FC = () => {
     const handleRemoveFile = async () => {
         setError('');
         if (instructionsDebounceRef.current) clearTimeout(instructionsDebounceRef.current);
+        fileRef.current = '';
         setFileBlock('');
-        await saveInstructions(manualInstructions, '');
+        await saveInstructions(manualRef.current, '');
     };
 
     const handlePersonaChange = (value: string) => {
+        personaRef.current = value;
+        pendingPersona.current = true;
         setPersona(value);
         setPersonaSaved(false);
         setError('');
@@ -154,7 +181,8 @@ export const CustomInstructionsSettings: React.FC = () => {
                     setError(result.error || 'Could not save AI persona.');
                     return;
                 }
-                setPersonaSaved(true);
+                pendingPersona.current = personaRef.current !== value;
+                setPersonaSaved(!pendingPersona.current);
                 setTimeout(() => setPersonaSaved(false), 1800);
             } catch (err: any) {
                 setError(err?.message || 'Could not save AI persona.');
@@ -190,7 +218,7 @@ export const CustomInstructionsSettings: React.FC = () => {
                     <button
                         type="button"
                         onClick={handleImportFile}
-                        disabled={isImporting}
+                        disabled={isImporting || !instructionsLoaded}
                         className="shrink-0 h-8 px-2.5 rounded-lg bg-bg-input border border-border-subtle text-[11px] font-semibold text-text-secondary hover:text-text-primary hover:border-[var(--accent-border)] transition-colors flex items-center gap-1.5 disabled:opacity-60"
                     >
                         {isImporting ? <RefreshCw size={13} className="animate-spin" /> : <Upload size={13} />}
@@ -216,6 +244,7 @@ export const CustomInstructionsSettings: React.FC = () => {
                 )}
 
                 <textarea
+                    disabled={!instructionsLoaded}
                     value={manualInstructions}
                     onChange={(event) => handleManualChange(event.target.value)}
                     placeholder="Example: Prefer concise interview answers. Use my selected docs as background. When unsure, say what context is missing."
@@ -223,8 +252,8 @@ export const CustomInstructionsSettings: React.FC = () => {
                     className="w-full bg-bg-input border border-border-subtle rounded-lg px-3 py-2.5 text-xs text-text-primary placeholder-text-tertiary focus:outline-none focus:border-[var(--accent-border)] focus:ring-1 focus:ring-[var(--accent-ring)] transition-all resize-none leading-relaxed"
                 />
                 <div className="flex items-center justify-between px-0.5">
-                    <p className="text-[10px] text-text-tertiary">Auto-saved. File content is saved with the instructions as Markdown.</p>
-                    <span className="text-[10px] tabular-nums text-text-tertiary">{manualInstructions.length} chars</span>
+                    <p className="text-[10px] text-text-tertiary">Auto-saved. The complete file text is saved and sent with your instructions.</p>
+                    <span className="text-[10px] tabular-nums text-text-tertiary">{totalCharacterCount.toLocaleString()} chars</span>
                 </div>
             </div>
 
@@ -246,6 +275,7 @@ export const CustomInstructionsSettings: React.FC = () => {
                     </div>
                 </div>
                 <textarea
+                    disabled={!personaLoaded}
                     value={persona}
                     onChange={(event) => handlePersonaChange(event.target.value)}
                     placeholder="Example: Act as a senior interview coach. Be direct, calm, and practical. Answer as me when the interviewer asks a question."

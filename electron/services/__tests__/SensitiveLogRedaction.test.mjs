@@ -81,6 +81,6 @@ test('IPC and meeting summary logs avoid answer and LLM response snippets', () =
   assert.doesNotMatch(persistence, /Raw LLM summary response/);
   assert.doesNotMatch(persistence, /Raw response:', jsonStr\.substring/);
 
-  assert.match(intent, /SLM classified`, \{ intent, confidence: topScore, textLength: text\.length \}/);
+  assert.doesNotMatch(intent, /ZeroShotClassifier|mobilebert|pipeline\(/);
   assert.doesNotMatch(intent, /text\.substring\(/);
 });

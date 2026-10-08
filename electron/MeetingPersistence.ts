@@ -89,6 +89,9 @@ function fallbackInterviewTitle(context: string, modeSnapshot?: { templateType: 
 }
 
 export class MeetingPersistence {
+    private saveRevisions = new Map<string, number>();
+    private saveRevisionCounter = 0;
+
     private session: SessionTracker;
     private llmHelper: LLMHelper;
 
@@ -109,7 +112,7 @@ export class MeetingPersistence {
 
         // 1. Snapshot valid data BEFORE resetting
         const durationMs = Date.now() - this.session.getSessionStartTime();
-        if (durationMs < 1000) {
+        if (durationMs < 1000 && this.session.getFullTranscript().length === 0 && this.session.getFullUsage().length === 0 && !this.session.getMeetingMetadata()?.interviewContext?.workspaceStateId) {
             console.log("Meeting too short, ignoring.");
             this.session.reset();
             return null;
@@ -174,11 +177,25 @@ export class MeetingPersistence {
         // 2. Reset state immediately so new meeting can start or UI is clean
         this.session.reset();
 
-        const meetingId = crypto.randomUUID();
+        const meetingId = metadataSnapshot?.resumeMeetingId || crypto.randomUUID();
+        if (metadataSnapshot?.resumeMeetingId) {
+            const previous = DatabaseManager.getInstance().getMeetingDetails(meetingId);
+            if (previous) {
+                snapshot.transcript = [...(previous.transcript || []).map((segment, index) => ({ ...segment, id: `saved-${meetingId}-${index}`, speaker: segment.speaker, final: true })), ...snapshot.transcript];
+                snapshot.usage = [...(previous.usage || []), ...snapshot.usage];
+                const previousDuration = previous.duration.split(':').map(Number);
+                const previousDurationMs = (previousDuration.length === 3
+                    ? previousDuration[0] * 3600 + previousDuration[1] * 60 + previousDuration[2]
+                    : previousDuration[0] * 60 + (previousDuration[1] || 0)) * 1000;
+                snapshot.durationMs += previousDurationMs;
+            }
+        }
+        const revision = ++this.saveRevisionCounter;
+        this.saveRevisions.set(meetingId, revision);
 
         // 4. Initial Save (Placeholder)
-        const minutes = Math.floor(durationMs / 60000);
-        const seconds = ((durationMs % 60000) / 1000).toFixed(0);
+        const minutes = Math.floor(snapshot.durationMs / 60000);
+        const seconds = ((snapshot.durationMs % 60000) / 1000).toFixed(0);
         const durationStr = `${minutes}:${Number(seconds) < 10 ? '0' : ''}${seconds}`;
 
         const workspaceStateId = metadataSnapshot?.interviewContext?.workspaceStateId;
@@ -207,7 +224,7 @@ export class MeetingPersistence {
         };
 
         try {
-            DatabaseManager.getInstance().saveMeeting(placeholder, snapshot.startTime, durationMs);
+            DatabaseManager.getInstance().saveMeeting(placeholder, snapshot.startTime, snapshot.durationMs);
             // Notify Frontend
             const wins = require('electron').BrowserWindow.getAllWindows();
             wins.forEach((w: any) => w.webContents.send('meetings-updated'));
@@ -215,7 +232,7 @@ export class MeetingPersistence {
             console.error("Failed to save placeholder", e);
         }
 
-        this.processAndSaveMeeting(snapshot, meetingId, metadataSnapshot, modeSnapshot).catch(err => {
+        this.processAndSaveMeeting(snapshot, meetingId, metadataSnapshot, modeSnapshot, revision).catch(err => {
             console.error('[MeetingPersistence] Background processing failed:', err);
         });
 
@@ -233,6 +250,7 @@ export class MeetingPersistence {
             title?: string;
             calendarEventId?: string;
             source?: 'manual' | 'calendar';
+            resumeMeetingId?: string;
             interviewContext?: {
                 workspaceStateId?: string;
                 contextMarkdown?: string;
@@ -242,8 +260,11 @@ export class MeetingPersistence {
         } | null,
         // BUG-MODE-BLEEDING fix: accept mode snapshot so async summary uses the mode that was
         // active when meeting stopped, not whatever mode is active when async processing runs.
-        modeSnapshot?: { id: string; name: string; templateType: string } | null
+        modeSnapshot?: { id: string; name: string; templateType: string } | null,
+        revision?: number
     ): Promise<void> {
+        const expectedRevision = revision ?? ++this.saveRevisionCounter;
+        if (revision === undefined) this.saveRevisions.set(meetingId, expectedRevision);
         let title = "Untitled Interview";
         let titleSource: 'placeholder' | 'auto' | 'manual' | 'calendar' = 'placeholder';
         let summaryData: { overview?: string; actionItems: string[], keyPoints: string[], sections?: Array<{ title: string; bullets: string[] }> } = { actionItems: [], keyPoints: [] };
@@ -488,7 +509,9 @@ Return ONLY valid JSON (no markdown code blocks):
                 titleSource
             };
 
+            if (this.saveRevisions.get(meetingId) !== expectedRevision) return;
             DatabaseManager.getInstance().saveMeeting(meetingData, data.startTime, data.durationMs);
+            this.saveRevisions.delete(meetingId);
 
             // Metadata was already snapshotted before session.reset() — nothing to clear here.
 

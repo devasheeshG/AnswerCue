@@ -541,7 +541,7 @@ export class WindowHelper {
           if (this.appState.getIsMeetingActive()) {
             // Meeting running — just hide the overlay; user can resume from the
             // launcher's "Meeting ongoing" button which calls setWindowMode('overlay').
-            this.hideOverlay();
+            void this.appState.endMeeting().catch(error => console.error('[WindowHelper] Could not stop interview:', error));
           } else {
             this.switchToLauncher();
           }

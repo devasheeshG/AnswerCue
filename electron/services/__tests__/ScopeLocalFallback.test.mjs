@@ -13,21 +13,9 @@ async function loadRouter() {
   return import(pathToFileURL(routerPath).href);
 }
 
-test('embeddings scope denial routes through Ollama before local fallback', () => {
-  const src = read('electron/rag/EmbeddingProviderResolver.ts');
+test('unused bundled embedding models are absent', () => { assert.equal(fs.existsSync(path.join(repoRoot, 'resources/models/Xenova')), false); });
 
-  assert.match(src, /error instanceof ProviderScopeError/);
-  assert.match(src, /\[ScopeFallback\] embeddings denied for cloud; routing to Ollama/);
-  assert.match(src, /candidates\.push\(new OllamaEmbeddingProvider/);
-  assert.match(src, /if \(!embeddingsDenied\) \{\s*candidates\.push\(new LocalEmbeddingProvider\(\)\)/);
-});
-
-test('embeddings scope denial gracefully omits embeddings when Ollama is unavailable', () => {
-  const src = read('electron/rag/EmbeddingProviderResolver.ts');
-
-  assert.match(src, /\[ScopeFallback\] embeddings denied; Ollama unavailable, using bundled local embedding model/);
-  assert.match(src, /return new LocalEmbeddingProvider\(\)/);
-});
+test('the app does not bootstrap an Ollama embedding model', () => { assert.doesNotMatch(read('electron/main.ts'), /bootstrapOllamaEmbeddings|nomic-embed-text/); });
 
 test('transcript scope denial routes full context to Ollama when available', () => {
   const src = read('electron/LLMHelper.ts');

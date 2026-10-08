@@ -59,7 +59,7 @@ In Settings → AI Providers → OpenAI, choose a default response tier. It save
 - **Auto:** follows your OpenAI project default.
 - **Standard:** normal processing.
 - **Fast (Priority):** faster processing for the selected supported model.
-- **Ultrafast:** uses GPT 6 Astra for OpenAI answers, including screenshots and background requests. Higher pricing and lower rate limits apply.
+Previously saved Ultrafast settings migrate to Fast (Priority), preserving the selected model. Priority availability and pricing depend on the model and your OpenAI account.
 
 Test Connection uses the saved tier. Other providers, transcription, and the separate Groq Fast Response toggle have their own settings.
 
@@ -68,13 +68,13 @@ Test Connection uses the saved tier. Other providers, transcription, and the sep
 AnswerCue is focused on interview workflows, not a generic meeting dashboard.
 
 - **Preflight setup:** first-run setup guides the user through provider keys and required permissions.
-- **Provider keys:** Settings supports the main LLM providers: OpenAI, Google Gemini, and Anthropic Claude.
+- **Provider keys:** Settings supports OpenAI, Google Gemini, and Anthropic Claude. Fetch Models refreshes the saved model list for that provider. One searchable Active Model dropdown combines all configured providers; this default also controls interview answers.
 - **Local transcription:** speech transcription uses the local Moonshine Base model downloaded during setup. Users should not need to choose a speech provider.
 - **Prep chat:** before an interview starts, the user can chat with the assistant to build interview context.
 - **Document context:** users can upload Markdown, TXT, PDF, and DOCX files. Files are ingested locally into Markdown, saved for reuse, and can be attached per interview.
-- **Custom instructions:** Settings includes Custom Instructions and AI Persona. Custom Instructions can also ingest one local file.
+- **Custom instructions:** Full typed instructions, the complete extracted text of one attached file, and the saved AI Persona are passed directly to the LLM. No embeddings or vector search are used. The character counter includes typed instructions and file text.
 - **Live interview phase:** the live transcript separates interviewer speech, user speech, and AI responses.
-- **Post-interview chat:** after the interview finishes, the user can keep asking questions with prep chat, selected docs, transcript, and generated AI responses available as context.
+- **Pause and restart:** Stop interview or close the popup to return to the same chat. Add more context and use Restart interview as often as needed; earlier chat, transcript, and AI answers remain available.
 - **Help assistant:** a bottom help entry opens a persistent help chat backed by the in-app AnswerCue Help Guide and the user's selected main LLM.
 - **Light and dark UI:** the UI uses the current AnswerCue palette and supports theme switching.
 

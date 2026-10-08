@@ -9,7 +9,7 @@ const mainPath = path.resolve(__dirname, '../../../electron/main.ts');
 const mainSource = readFileSync(mainPath, 'utf8');
 
 function extractMethodBody(methodName) {
-  const methodRe = new RegExp(`public\\s+(?:async\\s+)?${methodName}\\s*\\([^)]*\\)[^{]*\\{`);
+  const methodRe = new RegExp(`(?:public|private)\\s+(?:async\\s+)?${methodName}\\s*\\([^)]*\\)[^{]*\\{`);
   const match = methodRe.exec(mainSource);
   assert.ok(match, `could not locate ${methodName}`);
   let i = match.index + match[0].length;
@@ -25,7 +25,7 @@ function extractMethodBody(methodName) {
   return mainSource.slice(start, i - 1);
 }
 
-const startMeetingBody = extractMethodBody('startMeeting');
+const startMeetingBody = extractMethodBody('startMeetingOnce');
 const endMeetingBody = extractMethodBody('endMeeting');
 
 test('meeting start captures a generation token and endMeeting invalidates it', () => {

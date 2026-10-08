@@ -1946,6 +1946,17 @@ contextBridge.exposeInMainWorld('electronAPI', {
   setTavilyApiKey: (apiKey: string) => ipcRenderer.invoke('set-tavily-api-key', apiKey),
 
   // Dynamic Model Discovery
+  onInterviewPaused: (callback: (data: { meetingId: string | null; workspaceStateId?: string }) => void) => {
+    const listener = (_: any, data: { meetingId: string | null; workspaceStateId?: string }) => callback(data);
+    ipcRenderer.on('interview-paused', listener);
+    return () => ipcRenderer.removeListener('interview-paused', listener);
+  },
+  getProviderModelCache: () => ipcRenderer.invoke('get-provider-model-cache'),
+  onProviderModelCacheChanged: (callback: () => void) => {
+    const listener = () => callback();
+    ipcRenderer.on('provider-model-cache-changed', listener);
+    return () => ipcRenderer.removeListener('provider-model-cache-changed', listener);
+  },
   fetchProviderModels: (provider: 'gemini' | 'groq' | 'openai' | 'claude' | 'deepseek', apiKey: string) =>
     ipcRenderer.invoke('fetch-provider-models', provider, apiKey),
   setProviderPreferredModel: (provider: 'gemini' | 'groq' | 'openai' | 'claude' | 'deepseek', modelId: string) =>

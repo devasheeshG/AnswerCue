@@ -3,7 +3,6 @@ import Database from 'better-sqlite3';
 import path from 'path';
 import { app } from 'electron';
 import fs from 'fs';
-import * as sqliteVec from 'sqlite-vec';
 
 // Interfaces for our data objects
 export interface Meeting {
@@ -91,25 +90,6 @@ export class DatabaseManager {
 
             this.db = new Database(this.dbPath);
             this.db.pragma('journal_mode = WAL');
-
-            // Load sqlite-vec extension for native vector search
-            try {
-                // 1. sqlite-vec's getLoadablePath() returns a path inside app.asar
-                //    (e.g. .../app.asar/node_modules/sqlite-vec-darwin-arm64/vec0.dylib)
-                //    but dlopen() needs real files on disk, not files inside the asar archive.
-                //    electron-builder's asarUnpack puts them in app.asar.unpacked instead.
-                // 2. better-sqlite3's loadExtension() auto-appends the platform extension
-                //    (.dylib/.so/.dll), so we strip it to avoid vec0.dylib.dylib.
-                let extPath = sqliteVec.getLoadablePath();
-                extPath = extPath.replace('app.asar', 'app.asar.unpacked');
-                extPath = extPath.replace(/\.(dylib|so|dll)$/, '');
-                this.db.loadExtension(extPath);
-                this.resolvedExtPath = extPath; // Store for worker thread access
-                console.log('[DatabaseManager] sqlite-vec extension loaded successfully');
-            } catch (extErr) {
-                console.error('[DatabaseManager] Failed to load sqlite-vec extension:', extErr);
-                console.warn('[DatabaseManager] Vector search will fall back to JS cosine similarity');
-            }
 
             this.runMigrations();
         } catch (error) {
@@ -246,64 +226,12 @@ export class DatabaseManager {
         }
 
         // Version 2 → 3: sqlite-vec virtual tables for native vector search
-        if (version < 3) {
-            console.log('[DatabaseManager] Applying migration v2 → v3: vec0 virtual tables');
-            try {
-                // Create vec0 virtual table for chunk embeddings (dynamic dimension)
-                this.db.exec(`
-                    CREATE VIRTUAL TABLE IF NOT EXISTS vec_chunks USING vec0(
-                        chunk_id INTEGER PRIMARY KEY,
-                        embedding float
-                    );
-                `);
+        if (version < 3) this.db.pragma('user_version = 3');
 
-                // Create vec0 virtual table for summary embeddings (dynamic dimension)
-                this.db.exec(`
-                    CREATE VIRTUAL TABLE IF NOT EXISTS vec_summaries USING vec0(
-                        summary_id INTEGER PRIMARY KEY,
-                        embedding float
-                    );
-                `);
-
-                // Migrate existing chunk embeddings from BLOB column to vec0 table
-                this.migrateExistingEmbeddings();
-
-                console.log('[DatabaseManager] vec0 virtual tables created successfully');
-            } catch (e) {
-                console.error('[DatabaseManager] vec0 migration failed (sqlite-vec may not be loaded):', e);
-                console.warn('[DatabaseManager] VectorStore will fall back to JS cosine similarity');
-            }
-            this.db.pragma('user_version = 3');
-        }
 
         // Version 3 → 4: Drop strict 768-dim vec0 tables to allow flexible embedding dimensions
-        if (version < 4) {
-            console.log('[DatabaseManager] Applying migration v3 → v4: Drop strict dimension vec0 tables');
-            try {
-                this.db.exec('DROP TABLE IF EXISTS vec_chunks;');
-                this.db.exec('DROP TABLE IF EXISTS vec_summaries;');
+        if (version < 4) this.db.pragma('user_version = 4');
 
-                this.db.exec(`
-                    CREATE VIRTUAL TABLE IF NOT EXISTS vec_chunks USING vec0(
-                        chunk_id INTEGER PRIMARY KEY,
-                        embedding float
-                    );
-                `);
-
-                this.db.exec(`
-                    CREATE VIRTUAL TABLE IF NOT EXISTS vec_summaries USING vec0(
-                        summary_id INTEGER PRIMARY KEY,
-                        embedding float
-                    );
-                `);
-
-                this.migrateExistingEmbeddings();
-                console.log('[DatabaseManager] vec0 virtual tables recreated for flexible dimensions');
-            } catch (e) {
-                console.error('[DatabaseManager] vec0 migration v4 failed:', e);
-            }
-            this.db.pragma('user_version = 4');
-        }
 
         // Version 4 → 5: Add embedding provider and dimensions columns
         if (version < 5) {
@@ -347,46 +275,14 @@ export class DatabaseManager {
         // Version 7 → 8: Provision per-dimension vec0 tables (NOTE: this v8 ran in two broken
         // iterations for some users — first with float[1536] single table, then with correct per-dim
         // tables. The v9 migration below corrects any v8 that used the old broken schema.)
-        if (version < 8) {
-            console.log('[DatabaseManager] Applying migration v7 → v8: Provision per-dimension vec0 tables');
-            // Drop the legacy single-dim tables from v3/v4 if they exist and are unusable
-            try { this.db.exec('DROP TABLE IF EXISTS vec_chunks;'); } catch (_) {}
-            try { this.db.exec('DROP TABLE IF EXISTS vec_summaries;'); } catch (_) {}
+        if (version < 8) this.db.pragma('user_version = 8');
 
-            for (const dim of DatabaseManager.KNOWN_DIMS) {
-                this.ensureVecTableForDim(dim);
-            }
-            console.log('[DatabaseManager] v8 migration: per-dimension vec0 tables provisioned');
-            this.db.pragma('user_version = 8');
-        }
 
         // Version 8 → 9: Ensure per-dimension tables exist.
         // Required for DBs already at v8 but with the old broken float[1536] single-table schema,
         // or with the first incorrect v8 migration that didn't provision KNOWN_DIMS tables.
-        if (version < 9) {
-            console.log('[DatabaseManager] Applying migration v8 → v9: Ensure per-dimension vec0 tables exist');
-            // Drop old single-dim orphan tables if they exist (float[1536] schema)
-            try { this.db.exec('DROP TABLE IF EXISTS vec_chunks;'); } catch (_) {}
-            try { this.db.exec('DROP TABLE IF EXISTS vec_summaries;'); } catch (_) {}
+        if (version < 9) this.db.pragma('user_version = 9');
 
-            let allOk = true;
-            for (const dim of DatabaseManager.KNOWN_DIMS) {
-                this.ensureVecTableForDim(dim);
-                // Verify the table actually exists after provisioning
-                try {
-                    this.db.prepare(`SELECT count(*) FROM vec_chunks_${dim} LIMIT 1`).get();
-                } catch (e) {
-                    console.error(`[DatabaseManager] v9: vec_chunks_${dim} still missing after provisioning:`, e);
-                    allOk = false;
-                }
-            }
-            if (allOk) {
-                console.log('[DatabaseManager] v9 migration: all per-dimension vec0 tables verified ✓');
-            } else {
-                console.warn('[DatabaseManager] v9 migration: some tables missing — sqlite-vec extension may not be loaded');
-            }
-            this.db.pragma('user_version = 9');
-        }
 
         // Version 9 → 10: Add UNIQUE constraint on embedding_queue(meeting_id, chunk_id).
         // This enables INSERT OR IGNORE in EmbeddingPipeline.queueMeeting() to silently
@@ -899,119 +795,7 @@ export class DatabaseManager {
     /**
      * One-time migration: Copy existing BLOB embeddings into vec0 virtual tables.
      */
-    private migrateExistingEmbeddings(): void {
-        if (!this.db) return;
-
-        // Migrate chunk embeddings
-        try {
-            const chunkRows = this.db.prepare(
-                'SELECT id, embedding FROM chunks WHERE embedding IS NOT NULL'
-            ).all() as any[];
-
-            if (chunkRows.length > 0) {
-                const insert = this.db.prepare(
-                    'INSERT OR IGNORE INTO vec_chunks(chunk_id, embedding) VALUES (?, ?)'
-                );
-                const migrateAll = this.db.transaction(() => {
-                    for (const row of chunkRows) {
-                        try {
-                            insert.run(row.id, row.embedding);
-                        } catch (err) {
-                            // On mismatch (e.g. mixed 768 and 3072 dims), nullify to re-embed later
-                            this.db.prepare('UPDATE chunks SET embedding = NULL WHERE id = ?').run(row.id);
-                        }
-                    }
-                });
-                migrateAll();
-                console.log(`[DatabaseManager] Migrated ${chunkRows.length} chunk embeddings to vec_chunks`);
-            }
-        } catch (e) {
-            console.error('[DatabaseManager] Failed to migrate chunk embeddings:', e);
-        }
-
-        // Migrate summary embeddings
-        try {
-            const summaryRows = this.db.prepare(
-                'SELECT id, embedding FROM chunk_summaries WHERE embedding IS NOT NULL'
-            ).all() as any[];
-
-            if (summaryRows.length > 0) {
-                const insert = this.db.prepare(
-                    'INSERT OR IGNORE INTO vec_summaries(summary_id, embedding) VALUES (?, ?)'
-                );
-                const migrateAll = this.db.transaction(() => {
-                    for (const row of summaryRows) {
-                        try {
-                            insert.run(row.id, row.embedding);
-                        } catch (err) {
-                            this.db.prepare('UPDATE chunk_summaries SET embedding = NULL WHERE id = ?').run(row.id);
-                        }
-                    }
-                });
-                migrateAll();
-                console.log(`[DatabaseManager] Migrated ${summaryRows.length} summary embeddings to vec_summaries`);
-            }
-        } catch (e) {
-            console.error('[DatabaseManager] Failed to migrate summary embeddings:', e);
-        }
-    }
-
-    /**
-     * Known embedding dimension tiers.
-     * Used by the v8 migration, delete operations, and table provisioning.
-     * When a new provider dimension is encountered at runtime, ensureVecTableForDim() handles it.
-     */
-    public static readonly KNOWN_DIMS: readonly number[] = [768, 1536, 3072];
-
-    /** Cache: dimensions for which vec0 tables have already been verified/created this session. */
-    private ensuredDims = new Set<number>();
-
-    /**
-     * Lazily create a per-dimension vec0 table pair if not already present.
-     * Called by v8 migration and at runtime when a new embedding dimension is first seen.
-     * Uses an in-memory cache to avoid redundant CREATE TABLE IF NOT EXISTS on every insert.
-     */
-    public ensureVecTableForDim(dim: number): void {
-        if (this.ensuredDims.has(dim)) return; // Already verified this session
-        if (!this.db) return;
-        // Guard against SQL injection: dim must be a positive integer
-        if (!Number.isInteger(dim) || dim <= 0 || dim > 100_000) {
-            console.error(`[DatabaseManager] Invalid dimension for vec0 table: ${dim}`);
-            return;
-        }
-        try {
-            this.db.exec(`
-                CREATE VIRTUAL TABLE IF NOT EXISTS vec_chunks_${dim} USING vec0(
-                    chunk_id INTEGER PRIMARY KEY,
-                    embedding float[${dim}]
-                );
-            `);
-            this.db.exec(`
-                CREATE VIRTUAL TABLE IF NOT EXISTS vec_summaries_${dim} USING vec0(
-                    summary_id INTEGER PRIMARY KEY,
-                    embedding float[${dim}]
-                );
-            `);
-            this.ensuredDims.add(dim);
-            console.log(`[DatabaseManager] Ensured vec0 tables for dim=${dim}`);
-        } catch (e) {
-            console.error(`[DatabaseManager] Failed to create vec0 tables for dim=${dim}:`, e);
-        }
-    }
-
-    /**
-     * Check if sqlite-vec is available (any per-dimension vec0 table must exist)
-     */
-    public hasVecExtension(): boolean {
-        if (!this.db) return false;
-        try {
-            // Check the most common dimension (Ollama 768); any may suffice
-            this.db.prepare("SELECT count(*) FROM vec_chunks_768 LIMIT 1").get();
-            return true;
-        } catch (e) {
-            return false;
-        }
-    }
+    public hasVecExtension(): boolean { return false; }
 
     // ============================================
     // Public API

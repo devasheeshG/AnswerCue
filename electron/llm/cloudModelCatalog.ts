@@ -42,6 +42,7 @@ export const ALLOWED_CLAUDE_MODELS = new Set(CLAUDE_CHAT_MODELS.map(model => mod
 
 export function getCloudChatModel(modelId: string): CloudChatModel | undefined {
   const id = modelId.toLowerCase();
-  return OPENAI_CHAT_MODELS.find(model => model.id === id)
-    || CLAUDE_CHAT_MODELS.find(model => model.id === id);
+  const models = [...OPENAI_CHAT_MODELS, ...CLAUDE_CHAT_MODELS];
+  return models.find(model => model.id === id) || models.find(model =>
+    id.startsWith(model.id + '-') && /^(?:\d{8}|\d{4}-\d{2}-\d{2})$/.test(id.slice(model.id.length + 1)));
 }

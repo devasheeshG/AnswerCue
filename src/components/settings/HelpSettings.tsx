@@ -1101,7 +1101,7 @@ export const HelpSettings: React.FC = () => {
 
                 <AccordionSection title="4. Interview Workspace" icon={<Monitor className="w-4 h-4" />}>
                     <div className="space-y-6">
-                        <p className="text-[13px]">The main workspace is organized around interviews: the left panel lists interviews, the middle panel contains prep chat, transcript, and post-interview chat, and the right panel contains setup status, model, audio, and detectability controls.</p>
+                        <p className="text-[13px]">The main workspace is organized around interviews: the left panel lists interviews, the middle panel contains prep chat, transcript, and post-interview chat, and the right panel contains setup status, audio, and detectability controls.</p>
 
                         <div className="relative w-full flex flex-col p-2 sm:p-5 bg-bg-main rounded-[26px] border border-border-subtle shadow-inner">
                             <MockAppInterface />
@@ -1497,7 +1497,7 @@ export const HelpSettings: React.FC = () => {
                                         <li>Only one Custom Instructions file is attached at a time.</li>
                                         <li>Use <strong>Change file</strong> to replace the current file.</li>
                                         <li>Use the remove button to keep typed instructions but clear the file.</li>
-                                        <li>The ingested Markdown is saved with your instructions.</li>
+                                        <li>The complete extracted text is sent directly with your instructions; no embeddings or vector search. The counter includes file text.</li>
                                     </ul>
                                 </div>
                                 <div className="p-4 rounded-xl border bg-bg-item-surface border-border-subtle">
@@ -1508,7 +1508,7 @@ export const HelpSettings: React.FC = () => {
                                         <li>Tell the assistant what role to play.</li>
                                         <li>Describe the tone, answer length, or directness you prefer.</li>
                                         <li>Use it for interview-coach behavior separate from factual context.</li>
-                                        <li>Persona is saved independently from Custom Instructions.</li>
+                                        <li>Persona is saved independently and sent together with Custom Instructions, including streamed answers.</li>
                                     </ul>
                                 </div>
                             </div>

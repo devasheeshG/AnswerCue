@@ -32,6 +32,10 @@ function missingMoonshineBaseFiles() {
 }
 
 async function downloadModels() {
+    if (!SHOULD_DOWNLOAD_STT_RESOURCE_CACHE) {
+        console.log('[download-models] No AI weights are bundled; Moonshine downloads during setup.');
+        return;
+    }
     const { pipeline, env } = await import('@huggingface/transformers');
     const modelsDir = path.join(__dirname, '../resources/models');
     
@@ -45,16 +49,6 @@ async function downloadModels() {
     env.localModelPath = modelsDir;
     
     try {
-        // 1. Embedding model (RAG)
-        console.log('[download-models] Downloading Xenova/all-MiniLM-L6-v2...');
-        await pipeline('feature-extraction', 'Xenova/all-MiniLM-L6-v2');
-        console.log('[download-models] all-MiniLM-L6-v2 downloaded.');
-
-        // 2. Zero-shot classification model (Intent Classifier)
-        console.log('[download-models] Downloading Xenova/mobilebert-uncased-mnli...');
-        await pipeline('zero-shot-classification', 'Xenova/mobilebert-uncased-mnli');
-        console.log('[download-models] mobilebert-uncased-mnli downloaded.');
-
         if (SHOULD_DOWNLOAD_STT_RESOURCE_CACHE) {
             // Optional developer cache mode. Normal releases download Moonshine
             // during preflight into app data so installers stay small and

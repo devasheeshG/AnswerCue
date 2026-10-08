@@ -60,7 +60,7 @@ function extractMethodBody(methodName) {
 const wireSystemBody = extractMethodBody('wireSystemCapture');
 const wireMicBody    = extractMethodBody('wireMicCapture');
 const endMeetingBody = extractMethodBody('endMeeting');
-const startMeetingBody = extractMethodBody('startMeeting');
+const startMeetingBody = extractMethodBody('startMeetingOnce');
 
 test('wireSystemCapture attaches __disarmStuckWatchdog on the capture instance', () => {
   assert.ok(

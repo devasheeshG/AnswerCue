@@ -1,4 +1,4 @@
-import { isOpenAiServiceTier, resolveOpenAiTierModel, normalizeOpenAiServiceTier, buildOpenAiResponsesRequest } from './llm/openAiServiceTier';
+import { isOpenAiServiceTier, resolveOpenAiTierModel, normalizeOpenAiServiceTier } from './llm/openAiServiceTier';
 // ipcHandlers.ts
 
 import * as crypto from 'crypto';
@@ -38,6 +38,15 @@ export function initializeIpcHandlers(appState: AppState): void {
   ) => {
     ipcMain.removeAllListeners(channel);
     ipcMain.on(channel, listener);
+  };
+
+  const invalidateProviderModelCache = (provider: string) => {
+    const cache = SettingsManager.getInstance().get('providerModelCache') || {};
+    if (!cache[provider]) return;
+    const next = { ...cache };
+    delete next[provider];
+    SettingsManager.getInstance().set('providerModelCache', next);
+    BrowserWindow.getAllWindows().forEach(win => { if (!win.isDestroyed()) win.webContents.send('provider-model-cache-changed'); });
   };
 
   /**
@@ -1347,7 +1356,9 @@ export function initializeIpcHandlers(appState: AppState): void {
     try {
       const { CredentialsManager } = require('./services/CredentialsManager');
       const cm = CredentialsManager.getInstance();
+      const previousKey = cm.getGeminiApiKey();
       cm.setGeminiApiKey(apiKey);
+      if (previousKey !== apiKey.trim()) invalidateProviderModelCache('gemini');
 
       // Also update the LLMHelper immediately
       const llmHelper = appState.processingHelper.getLLMHelper();
@@ -1419,7 +1430,9 @@ export function initializeIpcHandlers(appState: AppState): void {
     try {
       const { CredentialsManager } = require('./services/CredentialsManager');
       const cm = CredentialsManager.getInstance();
+      const previousKey = cm.getOpenaiApiKey();
       cm.setOpenaiApiKey(apiKey);
+      if (previousKey !== apiKey.trim()) invalidateProviderModelCache('openai');
 
       // Also update the LLMHelper immediately
       const llmHelper = appState.processingHelper.getLLMHelper();
@@ -1445,7 +1458,9 @@ export function initializeIpcHandlers(appState: AppState): void {
     try {
       const { CredentialsManager } = require('./services/CredentialsManager');
       const cm = CredentialsManager.getInstance();
+      const previousKey = cm.getClaudeApiKey();
       cm.setClaudeApiKey(apiKey);
+      if (previousKey !== apiKey.trim()) invalidateProviderModelCache('claude');
 
       // Also update the LLMHelper immediately
       const llmHelper = appState.processingHelper.getLLMHelper();
@@ -2135,6 +2150,8 @@ export function initializeIpcHandlers(appState: AppState): void {
   // Dynamic Model Discovery Handlers
   // ==========================================
 
+  safeHandle('get-provider-model-cache', () => SettingsManager.getInstance().get('providerModelCache') || {});
+
   safeHandle(
     'fetch-provider-models',
     async (_, provider: 'gemini' | 'groq' | 'openai' | 'claude' | 'deepseek', apiKey: string) => {
@@ -2157,9 +2174,12 @@ export function initializeIpcHandlers(appState: AppState): void {
 
         const { fetchProviderModels } = require('./utils/modelFetcher');
         const models = await fetchProviderModels(provider, key);
+        const cache = SettingsManager.getInstance().get('providerModelCache') || {};
+        SettingsManager.getInstance().set('providerModelCache', { ...cache, [provider]: models });
+        BrowserWindow.getAllWindows().forEach(win => { if (!win.isDestroyed()) win.webContents.send('provider-model-cache-changed'); });
         return { success: true, models };
       } catch (error: any) {
-        console.error(`[IPC] Failed to fetch ${provider} models:`, error);
+        console.error(`[IPC] Failed to fetch ${provider} models:`, { status: error?.response?.status, message: error.message });
         const msg =
           error?.response?.data?.error?.message || error.message || 'Failed to fetch models';
         return { success: false, error: msg };
@@ -2833,23 +2853,18 @@ export function initializeIpcHandlers(appState: AppState): void {
         } else if (provider === 'openai') {
           const tier = normalizeOpenAiServiceTier(SettingsManager.getInstance().get('openAiServiceTier'));
           const { CredentialsManager } = require('./services/CredentialsManager');
-          const selectedModel = CredentialsManager.getInstance().getPreferredModel('openai') || DEFAULT_OPENAI_MODEL;
-          const request = {
-            model: resolveOpenAiTierModel(selectedModel, tier),
-            messages: [{ role: 'user', content: 'Reply with OK.' }],
-            max_completion_tokens: 128,
-            reasoning_effort: 'low',
-          };
+          const active = CredentialsManager.getInstance().getDefaultModel();
+          const cached = SettingsManager.getInstance().get('providerModelCache')?.openai?.[0]?.id;
+          const model = /^(gpt-|o[134])/.test(active) ? active : cached || DEFAULT_OPENAI_MODEL;
+          const serviceTier = tier === 'fast' ? 'priority' : tier;
+          const responsesOnly = /codex|(?:^|-)pro(?:-|$)/.test(model);
           response = await axios.post(
-            tier === 'ultrafast' ? 'https://api.openai.com/v1/responses' : 'https://api.openai.com/v1/chat/completions',
-            tier === 'ultrafast' ? buildOpenAiResponsesRequest(request) : {
-              ...request, service_tier: tier === 'fast' ? 'priority' : tier,
+            responsesOnly ? 'https://api.openai.com/v1/responses' : 'https://api.openai.com/v1/chat/completions',
+            responsesOnly ? { model, input: 'Reply with OK.', max_output_tokens: 128, service_tier: serviceTier, store: false } : {
+              model, messages: [{ role: 'user', content: 'Reply with OK.' }], max_completion_tokens: 128, service_tier: serviceTier,
             },
             { headers: { Authorization: `Bearer ${apiKey}` }, timeout: 45000 },
           );
-          if (tier === 'ultrafast' && response.data?.status !== 'completed') {
-            return { success: false, error: response.data?.error?.message || 'OpenAI response did not complete' };
-          }
         } else if (provider === 'claude') {
           response = await axios.post(
             'https://api.anthropic.com/v1/messages',
@@ -3061,9 +3076,12 @@ export function initializeIpcHandlers(appState: AppState): void {
 
   // --- Model Selector Window IPC ---
 
-  safeHandle('show-model-selector', (_, coords: { x: number; y: number; activate?: boolean }) => {
-    appState.modelSelectorWindowHelper.showWindow(coords.x, coords.y, { activate: coords.activate });
-  });
+  const openActiveModelSettings = () => {
+    appState.getWindowHelper().switchToLauncher();
+    appState.getWindowHelper().getLauncherWindow()?.webContents.send('open-settings-tab', 'ai-providers');
+  };
+  safeHandle('show-model-selector', () => { openActiveModelSettings(); return { success: true }; });
+  safeHandle('toggle-model-selector', () => { openActiveModelSettings(); return { success: true }; });
 
   safeHandle('hide-model-selector', () => {
     appState.modelSelectorWindowHelper.hideWindow();

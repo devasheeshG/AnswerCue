@@ -4,13 +4,9 @@ This is the in-app knowledge base for the AnswerCue Help Assistant. The help cha
 
 ## Mental Model
 
-AnswerCue has three phases:
+Each interview is one persistent conversation. Chat to add background, company context, or questions. **Start interview** opens the overlay and starts audio capture. **Stop interview**, or closing the overlay, returns to the same conversation. Chat again and use **Restart interview** to resume as often as needed.
 
-1. **Prepare interview:** chat with the assistant, add notes, and attach selected documents.
-2. **Live interview:** capture interviewer audio, user audio, and generated AI help.
-3. **After interview:** keep chatting with the assistant using prep context, selected docs, transcript, and AI responses.
-
-The prep chat is not the transcript. The transcript is created only during the live interview.
+Typed chat is distinct from captured speech, but both stay in the conversation and are available to subsequent answers. Restarting keeps the same saved interview and adds the new transcript and answers to it.
 
 ## First Run Setup
 
@@ -33,6 +29,10 @@ Settings should expose only the main LLM providers:
 - OpenAI
 - Google Gemini
 - Anthropic Claude
+
+Use the searchable **Active Model** dropdown in Settings → AI Providers to choose across all configured providers. **Fetch Models** refreshes that provider’s locally saved list; there are no separate model selectors in provider cards or the interview sidebar.
+
+OpenAI’s default response tier uses the app dropdown: **Auto**, **Standard**, or **Fast (Priority)**. It saves automatically. Previously saved Ultrafast choices migrate to Fast without changing your model. Provider availability and pricing still apply.
 
 The selected main model is used for:
 
@@ -84,7 +84,7 @@ AnswerCue uses a three-column desktop layout:
 
 - **Left panel:** interviews list and New Interview.
 - **Middle panel:** the active interview conversation, transcript, prep chat, and post-interview chat.
-- **Right panel:** setup status, selected model, audio configuration, and detectability controls.
+- **Right panel:** setup status, audio configuration, and detectability controls.
 
 The middle panel should be the main working area. Chat, transcript, document attachment, and interview lifecycle messages should appear there.
 
@@ -319,16 +319,11 @@ This action captures the screen, attaches the screenshot, and immediately runs *
 
 Best for live coding because it avoids the extra step of manually taking a screenshot and then clicking **Solve Code**.
 
-## Interview Finished
+## Stopping And Restarting
 
-When the interview ends:
+Click **Stop interview** or close the popup to stop audio capture and return to the main chat. The transcript and responses remain in the same conversation. Type additional context or ask questions, then click **Restart interview**. Repeat this without creating a new interview.
 
-- Show an **Interview finished** boundary directly after the final transcript item.
-- The boundary should scroll with the transcript.
-- It should not overlay the chat composer.
-- Any temporary "Finalizing interview" state should clear when finalization completes or fails.
-
-After the boundary, the user can continue chatting with the assistant. The post-interview chat should use prep chat, selected docs, transcript, and AI responses as context.
+Use **Return to overlay** while capture is active to bring the popup back. Changing the default model happens in Settings → AI Providers.
 
 ## Saved State
 
@@ -339,7 +334,7 @@ AnswerCue should persist:
 - Selected documents.
 - Live transcript.
 - AI responses.
-- Interview started and finished boundaries.
+- The same interview identity across repeated capture sessions.
 - Post-interview chat.
 
 When reopening an old interview, the user should see the saved state instead of a blank page.
@@ -356,11 +351,13 @@ Use them for durable preferences that apply across interviews:
 - Topics to emphasize or avoid.
 - General resume or project context.
 
-The Custom Instructions tab supports one ingested local file. Choosing a new file should replace the old file. Removing the file should keep typed instructions.
+The Custom Instructions tab supports one local MD, TXT, PDF, or DOCX file. Its complete extracted text is saved alongside typed instructions and passed directly to the LLM, without embeddings, vector search, or application truncation. The counter includes typed instructions plus file text. Choosing a new file replaces the old file; removing it keeps typed instructions.
+
+Files above 15 MB are rejected. Scanned PDFs need text extraction before upload. The selected model’s context window still limits how much total input it can accept; the app does not silently trim the attached instructions.
 
 ## AI Persona
 
-AI Persona lives in Settings next to Custom Instructions.
+AI Persona lives in Settings next to Custom Instructions. Both are saved independently, restored on restart, and included in cloud streaming and other chat requests.
 
 Use it to describe assistant behavior:
 

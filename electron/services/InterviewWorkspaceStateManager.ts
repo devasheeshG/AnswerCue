@@ -34,7 +34,6 @@ export interface InterviewWorkspaceState {
 }
 
 const MAX_WORKSPACES = 300;
-const MAX_CONTEXT_MARKDOWN_CHARS = 250_000;
 const VALID_PHASES = new Set(['before', 'during', 'after']);
 const VALID_STATUSES = new Set(['draft', 'active', 'complete']);
 
@@ -92,7 +91,7 @@ function normalizeState(raw: any, existing?: InterviewWorkspaceState): Interview
   const messages = Array.isArray(raw?.messages)
     ? raw.messages.map(normalizeMessage).filter(Boolean) as InterviewWorkspaceMessage[]
     : existing?.messages || [];
-  const contextMarkdown = normalizeString(raw?.contextMarkdown).slice(0, MAX_CONTEXT_MARKDOWN_CHARS);
+  const contextMarkdown = normalizeString(raw?.contextMarkdown);
 
   return {
     id: normalizeString(raw?.id || existing?.id),
