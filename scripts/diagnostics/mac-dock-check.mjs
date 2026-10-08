@@ -14,7 +14,7 @@ function snapshot(name) {
   let preferences = {};
   const xml = run('defaults', ['export', 'com.apple.dock', '-'], true);
   try {
-    const raw = execFileSync('plutil', ['-convert', 'json', '-o', '-', '-'], { input: xml, encoding: 'utf8' });
+    const raw = execFileSync('python3', ['-c', 'import sys,plistlib,json,datetime; print(json.dumps(plistlib.loads(sys.stdin.buffer.read()),default=lambda value: value.isoformat() if isinstance(value,datetime.datetime) else "<binary>"))'], { input: xml, encoding: 'utf8' });
     const data = JSON.parse(raw);
     for (const key of ['persistent-apps', 'recent-apps', 'persistent-others']) preferences[key] = (data[key] || []).filter(item => JSON.stringify(item).includes('AnswerCue') || JSON.stringify(item).includes('com.answercue'));
     preferences.showRecents = data['show-recents'];
@@ -37,9 +37,9 @@ run('defaults', ['delete', 'com.apple.dock', 'recent-apps'], true);
 run('killall', ['Dock'], true); await sleep(2000);
 snapshot('00-before');
 for (let cycle = 1; cycle <= 4; cycle++) {
-  run('open', [appPath]); await sleep(5000);
+  run('open', [appPath]); await sleep(3000); run(snapshotBinary, ['--dismiss-permissions'], true); await sleep(3000);
   snapshot(`${cycle}-launch`);
-  for (let repeat = 0; repeat < 3; repeat++) { run('open', [appPath]); await sleep(700); }
+  for (let repeat = 0; repeat < 3; repeat++) { const message = run('open', [appPath], true); if (message) fs.appendFileSync(path.join(output, 'reopen-messages.log'), message); await sleep(700); }
   const active = snapshot(`${cycle}-reopen`);
   const parents = active.applications.filter(app => app.bundleId === 'com.answercue.desktop');
   for (const app of parents) run('kill', ['-TERM', String(app.pid)], true);
@@ -52,5 +52,5 @@ for (let cycle = 1; cycle <= 4; cycle++) {
 const executable = path.join(appPath, 'Contents/MacOS/AnswerCue');
 const log = fs.openSync(path.join(output, 'direct-launch.log'), 'w');
 const child = spawn(executable, [], { stdio: ['ignore', log, log] });
-await sleep(5000); snapshot('direct-launch'); child.kill('SIGTERM'); await sleep(3000); snapshot('direct-quit');fs.closeSync(log);
+await sleep(3000); run(snapshotBinary, ['--dismiss-permissions'], true); await sleep(3000); snapshot('direct-launch'); child.kill('SIGTERM'); await sleep(3000); snapshot('direct-quit');fs.closeSync(log);
 console.log(`Dock diagnostic evidence: ${output}`);

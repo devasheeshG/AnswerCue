@@ -30,6 +30,35 @@ func visit(_ element: AXUIElement, _ depth: Int) {
     }
     if let children = attribute(element, "AXChildren") as? [AXUIElement] { for child in children { visit(child, depth + 1) } }
 }
+func labels(_ element: AXUIElement, _ depth: Int = 0) -> [String] {
+    if depth > 8 { return [] }
+    var result = [String]()
+    if let text = attribute(element, "AXTitle") as? String { result.append(text) }
+    if let text = attribute(element, "AXValue") as? String { result.append(text) }
+    if let children = attribute(element, "AXChildren") as? [AXUIElement] { for child in children { result += labels(child, depth + 1) } }
+    return result
+}
+func denyMicrophone(_ element: AXUIElement, _ depth: Int = 0) -> Bool {
+    if depth > 8 { return false }
+    let title = (attribute(element, "AXTitle") as? String ?? "").replacingOccurrences(of: "’", with: "'")
+    if (attribute(element, "AXRole") as? String) == "AXButton" && title == "Don't Allow" {
+        return AXUIElementPerformAction(element, kAXPressAction as CFString) == .success
+    }
+    if let children = attribute(element, "AXChildren") as? [AXUIElement] { for child in children { if denyMicrophone(child, depth + 1) { return true } } }
+    return false
+}
+if CommandLine.arguments.contains("--dismiss-permissions") {
+    for application in NSWorkspace.shared.runningApplications {
+        let element = AXUIElementCreateApplication(application.processIdentifier)
+        if let windows = attribute(element, "AXWindows") as? [AXUIElement] {
+            for window in windows {
+                let text = labels(window).joined(separator: " ")
+                if text.contains("AnswerCue") && text.localizedCaseInsensitiveContains("microphone") && denyMicrophone(window) { print("Denied test-VM microphone prompt for AnswerCue") }
+            }
+        }
+    }
+    exit(0)
+}
 if let dock = NSWorkspace.shared.runningApplications.first(where: { $0.bundleIdentifier == "com.apple.dock" }) {
     let element = AXUIElementCreateApplication(dock.processIdentifier)
     var children: CFTypeRef?
