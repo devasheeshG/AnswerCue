@@ -244,6 +244,9 @@ jobs:
           set -euo pipefail
           APPS=$(find release -maxdepth 2 -name 'AnswerCue.app' -path '*mac*')
           if [ -z "$APPS" ]; then echo "No AnswerCue.app found in release/"; exit 1; fi
+          while IFS= read -r APP; do
+            codesign --verify --deep --strict --verbose=2 "$APP"
+          done <<< "$APPS"
           shopt -s nullglob
           DMGS=(release/*.dmg)
           ZIPS=(release/*.zip)
@@ -259,6 +262,13 @@ jobs:
           test -s "release/AnswerCue-${VERSION}-x64.dmg"
           hdiutil verify "release/AnswerCue-${VERSION}-arm64.dmg"
           hdiutil verify "release/AnswerCue-${VERSION}-x64.dmg"
+          for ARCH in arm64 x64; do
+            VERIFY_DIR=$(mktemp -d "$RUNNER_TEMP/answercue-zip-check.XXXXXX")
+            if [ "$ARCH" = "arm64" ]; then ZIP="release/AnswerCue-${VERSION}-arm64-mac.zip"; else ZIP="release/AnswerCue-${VERSION}-mac.zip"; fi
+            ditto -x -k "$ZIP" "$VERIFY_DIR"
+            codesign --verify --deep --strict --verbose=2 "$VERIFY_DIR/AnswerCue.app"
+            rm -rf "$VERIFY_DIR"
+          done
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4

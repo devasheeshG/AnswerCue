@@ -141,8 +141,14 @@ exports.default = async function (context) {
                     execSync(`codesign --force ${hardenedOpt}--entitlements "${entitlementsPath}" --sign - "${nodePath}"`, { stdio: 'inherit' });
                 } catch (error) {
                     console.error(`[Ad-Hoc Signing] Failed to sign ${file}:`, error);
+                    throw error;
                 }
             }
         }
     }
+    // Native module re-signing changes sealed resources. Refresh the outer seal
+    // LAST, without --deep, so native-module entitlements remain intact.
+    execSync(`codesign --force ${hardenedOpt}--entitlements "${entitlementsPath}" --sign - "${appPath}"`, { stdio: 'inherit' });
+    execSync(`codesign --verify --deep --strict --verbose=2 "${appPath}"`, { stdio: 'inherit' });
+    console.log('[Ad-Hoc Signing] Final app resource seal verified.');
 };

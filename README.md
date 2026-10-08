@@ -50,6 +50,17 @@ If your operating system warns about an unsigned or newly signed build, make sur
 - **Persistent interview memory:** prep chat, selected docs, transcript, AI responses, and post-interview chat are saved so you can reopen an interview later.
 - **Light and dark UI:** the desktop app follows the AnswerCue visual system with both themes available.
 
+## OpenAI Response Tiers
+
+In Settings → AI Providers → OpenAI, choose a default response tier. It saves automatically for subsequent requests and persists across restarts.
+
+- **Auto:** follows your OpenAI project default.
+- **Standard:** normal processing.
+- **Fast (Priority):** faster processing for the selected supported model.
+- **Ultrafast:** uses GPT 6 Astra for OpenAI answers, including screenshots and background requests. Higher pricing and lower rate limits apply.
+
+Test Connection uses the saved tier. Other providers, transcription, and the separate Groq Fast Response toggle have their own settings.
+
 ## Current Product Shape
 
 AnswerCue is focused on interview workflows, not a generic meeting dashboard.

@@ -1,5 +1,6 @@
 /**
- * afterAllArtifactBuild.cjs — electron-builder hook (used by electron-builder.signed.cjs).
+ * afterAllArtifactBuild.cjs — macOS DMG creation and verification hook.
+ * Used by both the ad-hoc and Developer ID build paths.
  *
  * electron-builder's built-in `mac.notarize` notarizes + staples the .app (so the
  * .app inside the updater ZIP is stapled). TWO gaps remained that this hook closes:
@@ -27,9 +28,12 @@
  * Then re-patch each dmg's sha512/size in latest*.yml (the dmg is brand-new bytes),
  * and assert the updater ZIP manifest still matches (the updater consumes the ZIP).
  *
+ * Ad-hoc builds use ditto/hdiutil and verify the mounted app signature without
+ * claiming Gatekeeper acceptance or notarization.
+ *
  * Credentials (no plaintext secrets in source): prefers App Store Connect API key
  * (CI), then Apple ID + app-specific password, then the local keychain profile
- * (APPLE_KEYCHAIN_PROFILE, e.g. `natively-notary`). No-op if none are present.
+ * (APPLE_KEYCHAIN_PROFILE). Production builds require credentials.
  */
 
 const { execFileSync, execSync, spawnSync } = require('child_process');
@@ -107,7 +111,7 @@ function patchYmlDmgHashes(outDir, dmgPaths) {
  * DMG-corruption bug: if a future DMG-build path ever breaks the embedded signature
  * again, the build FAILS here instead of shipping a non-notarizable installer.
  */
-function verifyDmgAppSignature(dmgPath) {
+function verifyDmgAppSignature(dmgPath, requireNotarization = true) {
   const attach = execFileSync('hdiutil', ['attach', dmgPath, '-nobrowse', '-readonly', '-noverify'], { encoding: 'utf8' });
   const mountLine = attach.split('\n').find((l) => l.includes('/Volumes/'));
   const mount = mountLine ? mountLine.slice(mountLine.indexOf('/Volumes/')).trim() : null;
@@ -118,6 +122,10 @@ function verifyDmgAppSignature(dmgPath) {
     const appInDmg = path.join(mount, app);
     // Throws (non-zero exit) if the embedded signature is invalid — exactly the eb bug.
     execFileSync('codesign', ['--verify', '--deep', '--strict', '--verbose=2', appInDmg], { stdio: 'inherit' });
+    if (!requireNotarization) {
+      console.log(`[dmg] verified embedded ad-hoc app signature inside ${path.basename(dmgPath)}`);
+      return;
+    }
     // spctl writes its human-readable assessment to stderr on macOS, even on
     // success. Capture both streams so a valid notarized app is not mistaken for
     // an empty/failed assessment.
@@ -202,6 +210,20 @@ function buildStyledDmg({ appPath, outDmg, identity }) {
   return outDmg;
 }
 
+/** Build a plain ad-hoc DMG without electron-builder's signature-changing layout. */
+function buildAdHocDmg({ appPath, outDmg }) {
+  const stage = fs.mkdtempSync(path.join(os.tmpdir(), 'answercue-adhoc-dmg-'));
+  try {
+    const stagedApp = path.join(stage, path.basename(appPath));
+    execFileSync('ditto', [appPath, stagedApp], { stdio: 'inherit' });
+    execFileSync('codesign', ['--verify', '--deep', '--strict', '--verbose=2', stagedApp], { stdio: 'inherit' });
+    fs.symlinkSync('/Applications', path.join(stage, 'Applications'));
+    execFileSync('hdiutil', ['create', '-volname', VOLNAME, '-srcfolder', stage, '-ov', '-format', 'UDZO', outDmg], { stdio: 'inherit' });
+  } finally {
+    fs.rmSync(stage, { recursive: true, force: true });
+  }
+}
+
 /** Find the signed .app for a given arch dir produced by electron-builder. */
 function findAppForArch(outDir, archDir) {
   const dir = path.join(outDir, archDir);
@@ -217,21 +239,16 @@ module.exports = async function afterAllArtifactBuild(buildResult) {
   // Nothing DMG-related and no mac apps => not our concern.
   const outDir = ebDmgs.length
     ? path.dirname(ebDmgs[0])
-    : path.resolve(process.cwd(), 'release');
+    : (buildResult.outDir || path.resolve(process.cwd(), 'release'));
 
-  const creds = notarytoolArgs();
-  if (!creds) {
-    console.log('[dmg] No notarization credentials in env — leaving electron-builder DMGs as-is (expected for unsigned/dev builds).');
-    return [];
-  }
-  const identity = resolveDeveloperIdIdentity();
-  if (!identity) {
-    console.warn('[dmg] No Developer ID identity resolved — cannot rebuild signed DMGs. Skipping.');
-    return [];
+  const production = process.env.ANSWERCUE_PRODUCTION_SIGN === '1';
+  const creds = production ? notarytoolArgs() : null;
+  const identity = production ? resolveDeveloperIdIdentity() : null;
+  if (production && (!creds || !identity)) {
+    throw new Error('[dmg] Production builds require Developer ID identity and notarization credentials.');
   }
 
-  // Map electron-builder's arch output dirs to their final dmg names. eb names the
-  // Both DMGs include their architecture in the filename.
+  // Map electron-builder output directories to architecture-specific DMG names.
   const archMap = [
     { archDir: 'mac-arm64', suffix: '-arm64' },
     { archDir: 'mac', suffix: '-x64' },
@@ -245,6 +262,13 @@ module.exports = async function afterAllArtifactBuild(buildResult) {
     const dmgName = `${VOLNAME}-${version}${suffix}.dmg`;
     const outDmg = path.join(outDir, dmgName);
 
+    if (!production) {
+      console.log(`[dmg] Building signature-preserving ad-hoc DMG for ${archDir}: ${dmgName}`);
+      buildAdHocDmg({ appPath, outDmg });
+      verifyDmgAppSignature(outDmg, false);
+      rebuiltDmgs.push(outDmg);
+      continue;
+    }
     console.log(`[dmg] Rebuilding clean styled DMG for ${archDir}: ${dmgName}`);
     buildStyledDmg({ appPath, outDmg, identity });
 
@@ -258,13 +282,14 @@ module.exports = async function afterAllArtifactBuild(buildResult) {
   }
 
   if (rebuiltDmgs.length === 0) {
-    console.warn('[dmg] No mac app dirs found to rebuild DMGs from.');
-    return [];
+    throw new Error('[dmg] No mac app dirs found to rebuild DMGs from.');
   }
 
   // Brand-new dmg bytes — refresh the manifest hashes, then assert the updater ZIPs.
   patchYmlDmgHashes(outDir, rebuiltDmgs);
   verifyZipManifest(outDir);
-  console.log('[dmg] All DMGs rebuilt (create-dmg) + signed + notarized + stapled + verified; ZIP manifest verified.');
+  console.log(production
+    ? '[dmg] Signed/notarized DMGs and ZIP manifest verified.'
+    : '[dmg] Ad-hoc DMG embedded signatures and ZIP manifest verified (not notarized).');
   return [];
 };

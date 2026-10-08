@@ -1,100 +1,99 @@
 # AnswerCue Release Process
 
-This app ships through GitHub Releases from the `FarzamHejaziK/AnswerCue`
-release channel. The update metadata must point to this repository so installed
-apps never read update notes or installers from the upstream project.
+Release channel: `devasheeshG/AnswerCue`.
+
+## Release Notes Format
+
+Use the established v2.7.3–v2.7.5 section format for every new release:
+
+```markdown
+Release date: YYYY-MM-DD
+
+## Summary
+
+AnswerCue vX.Y.Z describes the main user-visible change.
+
+## What's New
+
+- New features.
+
+## Improvements
+
+- Improvements to existing behavior.
+
+## Fixes
+
+- Fixed bugs.
+
+## Technical
+
+- Version, relevant implementation details, validation, and limitations.
+
+## Platform Downloads
+
+### macOS
+
+- Actual Apple Silicon and Intel assets; state signing/notarization status.
+
+### Windows
+
+- Actual Windows assets, or state that none were published.
+
+### Linux
+
+- Actual Linux assets, or state that none were published.
+```
+
+Use the actual publication date. Historical v2.8.0 and v2.8.1 notes retain their original release dates. List only produced artifacts and verified signing status. Keep release notes, CHANGELOG.md, and the GitHub release body consistent.
 
 ## Release Checklist
 
-1. Update the version in `package.json` and `package-lock.json`.
-2. Add a top entry to `CHANGELOG.md`.
-3. Add a release body under `.github/releases/vX.Y.Z.md`.
-4. Commit the app, docs, icon, and workflow changes.
-5. Push `main` and a matching `vX.Y.Z` tag, then immediately create the draft release with its release notes.
-6. Let GitHub Actions build, verify signing, and attach platform installers to the draft.
-7. Verify both workflows succeeded and the draft contains all artifacts below before publishing it as latest.
+1. Update package.json and package-lock.json to the same version.
+2. Add the dated changelog entry and .github/releases/vX.Y.Z.md.
+3. Run checks appropriate to the change and record material limitations.
+4. Commit and push the source and documentation.
+5. Create a draft release for the exact source commit.
+6. Run the macOS workflow against that tag.
+7. Verify the workflow result, both DMGs, both ZIPs, updater metadata, and signing status before publishing.
 
-## Platform Artifacts
+## macOS Artifacts
 
-| Platform | Artifact | Notes |
-| --- | --- | --- |
-| macOS Apple Silicon | `AnswerCue-X.Y.Z-arm64.dmg`, `AnswerCue-X.Y.Z-arm64-mac.zip` | Developer ID signed, notarized, and stapled |
-| macOS Intel | `AnswerCue-X.Y.Z.dmg`, `AnswerCue-X.Y.Z-mac.zip` | Developer ID signed, notarized, and stapled |
-| macOS update metadata | `latest-mac.yml` | Used by Electron updater |
-| Windows Intel/AMD x64 | `AnswerCue-Setup-X.Y.Z.exe` | Azure-signed NSIS installer and updater target |
-| Windows update metadata | `latest.yml` | Used by Electron updater |
+- Apple Silicon: `AnswerCue-X.Y.Z-arm64.dmg` and `AnswerCue-X.Y.Z-arm64-mac.zip`.
+- Intel: `AnswerCue-X.Y.Z-x64.dmg` and `AnswerCue-X.Y.Z-mac.zip`.
+- Update metadata: `latest-mac.yml` and generated ZIP blockmaps.
 
-Include generated blockmaps. The current release workflows do not produce Linux,
-Windows ARM64, or Windows 32-bit installers.
+The ad-hoc path builds ZIPs with electron-builder, reseals the app after native-module signing, and creates DMGs with ditto/hdiutil. Signature checks cover app bundles, mounted DMGs, and extracted ZIPs. Disk-image and updater-manifest checks must pass before upload.
 
-## Creating A Release
+Developer ID signing and notarization require Apple repository secrets. Set require_signing=true to make those credentials mandatory. Without them, artifacts are ad-hoc signed and unnotarized; disclose this in release notes. Signature integrity and Gatekeeper approval are separate checks.
+
+## Create and Build a Release
 
 ```bash
-npm version X.Y.Z --no-git-tag-version
-
-git add package.json package-lock.json CHANGELOG.md .github/releases/vX.Y.Z.md
-git commit -m "Release AnswerCue vX.Y.Z"
 git tag vX.Y.Z
 git push --atomic origin main vX.Y.Z
+
 gh release create vX.Y.Z \
-  --repo FarzamHejaziK/AnswerCue \
-  --verify-tag --draft \
+  --repo devasheeshG/AnswerCue --verify-tag --draft \
   --title "AnswerCue vX.Y.Z" \
   --notes-file .github/releases/vX.Y.Z.md
+
+gh workflow run release-macos.yml --repo devasheeshG/AnswerCue \
+  --ref main -f release_tag=vX.Y.Z -F require_signing=false
 ```
 
-After checking workflow results, signing verification, platform assets, and
-updater manifest hashes, publish the draft:
+For a signed/notarized release, configure Apple secrets and set require_signing=true. After verifying the build and assets:
 
 ```bash
-gh release edit vX.Y.Z --repo FarzamHejaziK/AnswerCue --draft=false --latest
+gh release edit vX.Y.Z --repo devasheeshG/AnswerCue --draft=false --latest
 ```
 
-Do not publish partial or failed platform builds as the latest release.
+## Updating Published Notes
 
-For a macOS CI-only fix after a tag has been created, push the workflow fix to
-`main` and rebuild the existing source tag without moving it:
+Edit the existing release in place so tags, source links, and downloaded assets retain their identity:
 
 ```bash
-gh workflow run release-macos.yml --repo FarzamHejaziK/AnswerCue \
-  --ref main -f release_tag=vX.Y.Z
+gh release edit vX.Y.Z --repo devasheeshG/AnswerCue \
+  --title "AnswerCue vX.Y.Z" --notes-file .github/releases/vX.Y.Z.md
 ```
 
-The workflow checks out that exact tag, requires signing and notarization, and
-uploads verified assets to its existing release. DMG tooling is installed in an
-isolated runner directory so it cannot change the app's locked dependencies.
-
-## Update Behavior
-
-AnswerCue checks the GitHub Releases feed for newer versions. Updates are shown
-inside the app as a quiet sidebar row, not as a modal promotion. Clicking the row
-downloads the newest installer/update metadata from the AnswerCue release
-channel.
-
-Signed macOS builds can use the standard Electron updater flow. Tagged macOS
-releases must pass signing and notarization checks; do not distribute an unsigned
-fallback or ask users to bypass Gatekeeper to compensate for a failed release.
-
-Windows uses the NSIS installer and `latest.yml` metadata for in-place updates.
-Tagged Windows releases require Azure signing configuration and valid Authenticode
-signatures on the packaged app and installer before upload.
-
-## Versioning
-
-Use semantic versioning:
-
-```text
-MAJOR.MINOR.PATCH
-MAJOR.MINOR.PATCH-beta.N
-```
-
-Examples:
-
-```text
-2.7.3
-2.8.0
-3.0.0-beta.1
-```
-
-Stable public builds should use a plain version. Pre-release builds should be
-marked as pre-release on GitHub.
+Historical v2.8.0 and v2.8.1 binaries were published by the original release channel. Reformatting their source notes does not rebuild or republish those binaries in this fork.

@@ -1,43 +1,138 @@
 # Changelog
 
+## [2.8.3] - 2026-10-08
+
+### Summary
+
+AnswerCue v2.8.3 fixes macOS packaging defects that can cause the app to be reported as damaged. It retains the OpenAI response-tier settings from v2.8.2.
+
+### What's New
+
+- **Verified Mac packages:** Signature checks cover the built app, the app inside each DMG, and the app extracted from each updater ZIP.
+
+### Improvements
+
+- Creates ad-hoc DMGs from pristine app bundles using `ditto` and `hdiutil`.
+- Preserves nested signatures and native-module entitlements during packaging.
+- Release uploads stop when signature, disk-image, or updater-manifest checks fail.
+
+### Fixes
+
+- Reseals the outer app after native modules are signed.
+- Native-module signing failures now stop the build.
+- Avoids electron-builder's signature-changing DMG layout in the ad-hoc packaging path.
+
+### Technical
+
+- Bumped package version to `2.8.3`.
+- Signing regression checks passed locally. Actual macOS package verification runs in GitHub Actions before upload.
+- This release is ad-hoc signed, not Developer ID signed or notarized. Valid signatures do not provide automatic Gatekeeper approval; Apple signing/notarization credentials are required for that.
+- Manual launch, audio, and permission checks on an installed Mac remain necessary.
+
+See [.github/releases/v2.8.3.md](.github/releases/v2.8.3.md) for platform downloads and signing status.
+
+## [2.8.2] - 2026-10-08
+
+### Summary
+
+AnswerCue v2.8.2 adds a saved OpenAI response-tier selector in Settings and publishes Apple Silicon and Intel DMGs from this fork.
+
+### What's New
+
+- **Default response tier:** Choose Auto, Standard, Fast (Priority), or Ultrafast inside Settings → AI Providers → OpenAI.
+- **Ultrafast support:** Uses GPT 6 Astra through the Responses API for OpenAI text, screenshot, and background answers.
+- **Mac installers:** Architecture-specific DMGs and updater ZIPs are available from this fork.
+
+### Improvements
+
+- Saves the tier automatically, applies it to subsequent requests, and restores it after restart.
+- Test Connection uses the saved tier.
+- Preserves streaming, image inputs, low reasoning, prompt caching, cancellation, and first-token timeouts.
+- Update downloads and release notes point to `devasheeshG/AnswerCue`.
+
+### Fixes
+
+- Prevents retries from appending a second answer to a partially streamed response.
+- Ultrafast does not silently downgrade to a different OpenAI model.
+
+### Technical
+
+- Bumped package version to `2.8.2`.
+- Auto follows the OpenAI project's default; Standard requests normal processing; Fast requests Priority processing for the selected supported model.
+- Ultrafast uses GPT 6 Astra even when another OpenAI model is selected. Higher pricing and lower rate limits apply.
+- Transcription, embeddings, other providers, and the separate Groq Fast Response control retain their own settings.
+- Renderer/Electron builds and five new transport tests passed. Existing repository test and type-check failures were unchanged; no paid OpenAI requests were made.
+
+See [.github/releases/v2.8.2.md](.github/releases/v2.8.2.md) for platform downloads and signing status.
+
 ## [2.8.1] - 2026-10-04
 
-### Model Defaults and Selection
+### Summary
 
-- New OpenAI setups default to GPT 6.1 Sol; new Claude setups default to Opus 5.5. Google remains Gemini 3.5 Flash.
-- First-run setup saves its model choice so it survives restarts and interview completion.
-- Shared defaults align onboarding, Settings, backend requests, connection checks, and text/screenshot fallback baselines.
-- Removed GPT 5.5, GPT 5.5 Thinking, and the GPT 5.5 Instant alias from model lists, discovery, and Codex CLI presets. Claude Opus 5.5 remains available.
-- Saved retired GPT 5.5 defaults and OpenAI preferences migrate to GPT 6.1 Sol on startup. Other valid saved choices remain unchanged.
-- No changes to the live interview shell's appearance.
+AnswerCue v2.8.1 updates default AI models, removes retired GPT 5.5 options, and fixes model-selection persistence.
 
-See [.github/releases/v2.8.1.md](.github/releases/v2.8.1.md) for verification, platform details, signing status, and known limitations.
+### What's New
+
+- **OpenAI default:** GPT 6.1 Sol (`gpt-6.1-sol`).
+- **Anthropic default:** Claude Opus 5.5 (`claude-opus-5-5`).
+- **Persistent setup choice:** The first-run model selection survives app restarts and interview completion.
+
+### Improvements
+
+- Shared defaults align onboarding, Settings, provider requests, connection checks, and text/screenshot fallback baselines.
+- Google remains Gemini 3.5 Flash; existing low-reasoning settings remain in place.
+- Preserves valid saved model choices, interview history, documents, and API keys.
+
+### Fixes
+
+- Removed GPT 5.5, GPT 5.5 Thinking, and the GPT 5.5 Instant (`chat-latest`) alias from model lists, discovery, and Codex CLI presets.
+- Migrates retired OpenAI preferences to GPT 6.1 Sol on startup.
+- Prevents removed models from returning after an upgrade. Claude Opus 5.5 remains available.
+
+### Technical
+
+- Bumped package version to `2.8.1`.
+- Original release included Developer ID signed/notarized macOS artifacts and Azure-signed Windows artifacts.
+- Includes the v2.8.0 workspace improvements and retains the existing live interview shell appearance.
+- Model access and API billing depend on the user's provider account; these defaults do not include API credits.
+
+See [.github/releases/v2.8.1.md](.github/releases/v2.8.1.md) for platform downloads and signing status.
 
 ## [2.8.0] - 2026-10-02
 
-### Workspace Refresh
+### Summary
 
-- Refined light and dark themes with neutral surfaces and AnswerCue accent colors, without changing the live interview shell's appearance.
-- Added collapsible interview and settings sidebars, interview filtering, and responsive layouts for smaller windows.
-- Reworked prep and follow-up chat with a growing composer, clearer document attachments, copy-response actions, and jump-to-latest navigation.
-- Enabled sending a document without accompanying text; sent documents leave the composer and remain in the conversation's context.
-- Improved Markdown code blocks and tables, searchable model selection, and compact audio selectors.
-- Improved Settings navigation, keyboard-operable switches, focus handling, and Escape behavior. Fixed duplicate animation keys and floating Help overlap.
+AnswerCue v2.8.0 refreshes the interview workspace, adds new OpenAI and Anthropic models, and improves chat, document handling, and accessibility.
 
-### Models and Requests
+### What's New
 
-- Added GPT 6 Astra, GPT 6.1 Sol, GPT 6 Luna, GPT 5.6 Sol/Terra/Luna, and Claude Opus 5/5.5 and Sonnet 5/5.5 to the shared model catalog.
-- Centralized model capabilities and request parameters, including reasoning effort, output limits, and first-token budgets.
-- Made screenshot requests honor the selected model before attempting provider fallbacks.
+- **Interview workspace:** Collapsible interview and settings panels, responsive side drawers, and saved-interview search.
+- **Chat controls:** Multiline composer, preparation starters, message timestamps, copy actions, and jump-to-latest navigation.
+- **AI models:** GPT 6 Astra, GPT 6.1 Sol, GPT 6 Luna, GPT 5.6 Sol/Terra/Luna, and Claude Opus 5/5.5 and Sonnet 5/5.5.
 
-### Release and Verification
+### Improvements
 
-- Versioned Windows x64 installer and macOS Intel/Apple Silicon DMG and ZIP builds.
-- Tagged Windows builds now require signing credentials and verify both application and installer signatures before release upload. macOS retains Developer ID signing, notarization, and stapling verification.
-- Added a development-only UI fixture with synthetic data for repeatable light/dark and responsive checks.
-- Type-check, renderer build, and automated suite passed locally: 1,025 passing tests, 41 skipped, no failures.
+- Refined light and dark themes, spacing, and AnswerCue accents.
+- Reusable document attachments and document-only messages retain their conversation context.
+- Improved code blocks, inline code, Markdown tables, searchable model selection, and audio-device controls.
+- Shared model metadata aligns reasoning settings, output limits, and first-token budgets.
+- Improved keyboard navigation, focus handling, and Settings layouts.
 
-See [.github/releases/v2.8.0.md](.github/releases/v2.8.0.md) for platform details and known limitations.
+### Fixes
+
+- Screenshot requests try the selected chat model before provider fallbacks.
+- Reading older messages no longer forces the chat back to the latest response.
+- Escape closes the active menu without closing the panel behind it.
+- Fixed duplicate Settings animation keys and the floating Help button overlapping Send.
+
+### Technical
+
+- Bumped package version to `2.8.0`.
+- Original release included Developer ID signed/notarized macOS artifacts and Azure-signed Windows artifacts.
+- Retained the existing floating live interview shell appearance.
+- Live audio, OS permissions, model access, and API billing remain dependent on the user's device and provider account.
+
+See [.github/releases/v2.8.0.md](.github/releases/v2.8.0.md) for platform downloads and signing status.
 
 ## [2.7.3] - 2026-06-15
 
