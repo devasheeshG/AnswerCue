@@ -132,6 +132,9 @@ export interface ElectronAPI {
   // API Key Management
   setGeminiApiKey: (apiKey: string) => Promise<{ success: boolean; error?: string }>
   setGroqApiKey: (apiKey: string) => Promise<{ success: boolean; error?: string }>
+  getOpenAiServiceTier: () => Promise<{ tier: import('../../electron/llm/openAiServiceTier').OpenAiServiceTier }>;
+  setOpenAiServiceTier: (tier: import('../../electron/llm/openAiServiceTier').OpenAiServiceTier) => Promise<{ success: boolean; error?: string }>;
+  onOpenAiServiceTierChanged: (callback: (tier: import('../../electron/llm/openAiServiceTier').OpenAiServiceTier) => void) => () => void;
   setOpenaiApiKey: (apiKey: string) => Promise<{ success: boolean; error?: string }>
   setClaudeApiKey: (apiKey: string) => Promise<{ success: boolean; error?: string }>
   setDeepseekApiKey: (apiKey: string) => Promise<{ success: boolean; error?: string }>

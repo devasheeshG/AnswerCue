@@ -23,6 +23,7 @@ interface ProviderCardProps {
     keyPlaceholder: string;
     keyUrl: string;
     onPreferredModelChange?: (modelId: string) => void;
+    children?: React.ReactNode;
 }
 
 export const ProviderCard: React.FC<ProviderCardProps> = ({
@@ -42,6 +43,7 @@ export const ProviderCard: React.FC<ProviderCardProps> = ({
     keyPlaceholder,
     keyUrl,
     onPreferredModelChange,
+    children,
 }) => {
     const [fetchedModels, setFetchedModels] = useState<FetchedModel[]>([]);
     const [isFetching, setIsFetching] = useState(false);
@@ -258,6 +260,8 @@ export const ProviderCard: React.FC<ProviderCardProps> = ({
                     <span className="w-[110px]" />
                 )}
             </div>
+
+            {children}
 
             {/* Error from test or fetch */}
             {testError && <p className="text-[10px] text-red-400 mt-1.5 mb-2">{testError}</p>}

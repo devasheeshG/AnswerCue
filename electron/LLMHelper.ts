@@ -1,3 +1,4 @@
+import { createOpenAiCompletion, normalizeOpenAiServiceTier, resolveOpenAiTierModel, type OpenAiServiceTier } from './llm/openAiServiceTier';
 import { GoogleGenAI } from "@google/genai"
 import Groq from "groq-sdk"
 import OpenAI from "openai"
@@ -107,6 +108,7 @@ export class LLMHelper {
   private customProvider: CustomProvider | null = null;
   private activeCurlProvider: CurlProvider | null = null;
   private groqFastTextMode: boolean = false;
+  private openAiServiceTier: OpenAiServiceTier = 'auto';
   private codexCliConfig: CodexCliConfig = DEFAULT_CODEX_CLI_CONFIG;
   private knowledgeOrchestrator: any = null;
   private negotiationCoachingHandler: ((payload: unknown) => void) | null = null;
@@ -442,6 +444,14 @@ export class LLMHelper {
     console.log('[LLMHelper] Keys scrubbed from memory');
   }
 
+  public setOpenAiServiceTier(tier: OpenAiServiceTier) {
+    this.openAiServiceTier = normalizeOpenAiServiceTier(tier);
+  }
+
+  public getOpenAiServiceTier(): OpenAiServiceTier {
+    return this.openAiServiceTier;
+  }
+
   public setGroqFastTextMode(enabled: boolean) {
     this.groqFastTextMode = enabled;
     console.log(`[LLMHelper] Groq Fast Text Mode: ${enabled}`);
@@ -470,14 +480,16 @@ export class LLMHelper {
     return id === "chat-latest" || id.startsWith("gpt-") || id.startsWith("o1-") || id.startsWith("o3-") || id.startsWith("o4-") || id.startsWith("chatgpt-") || id.includes("openai");
   }
 
-  private resolveOpenAiModel(modelId: string): string {
+  private resolveOpenAiModel(modelId: string, tier = this.openAiServiceTier): string {
+    if (tier === 'ultrafast') return resolveOpenAiTierModel(modelId, tier);
     if (modelId.toLowerCase() === OPENAI_GPT_55_THINKING_LOW_MODEL) {
       return OPENAI_GPT_55_MODEL;
     }
     return modelId;
   }
 
-  private getOpenAiReasoningConfig(modelId: string): Record<string, any> {
+  private getOpenAiReasoningConfig(modelId: string, tier = this.openAiServiceTier): Record<string, any> {
+    if (tier === 'ultrafast') return { reasoning_effort: 'low' };
     if (modelId.toLowerCase() === OPENAI_GPT_55_THINKING_LOW_MODEL) {
       return { reasoning_effort: 'low' };
     }
@@ -490,8 +502,9 @@ export class LLMHelper {
     return getCloudChatModel(modelId)?.firstTokenTimeoutMs || OPENAI_STREAM_FIRST_TOKEN_TIMEOUT_MS;
   }
 
-  private getOpenAiFallbackModels(requestedModel: string): string[] {
-    const resolvedPrimary = this.resolveOpenAiModel(requestedModel);
+  private getOpenAiFallbackModels(requestedModel: string, tier = this.openAiServiceTier): string[] {
+    if (tier === 'ultrafast') return [];
+    const resolvedPrimary = this.resolveOpenAiModel(requestedModel, tier);
     return [OPENAI_STREAM_FALLBACK_MODEL]
       .filter(model => model && model !== resolvedPrimary)
       .filter((model, index, arr) => arr.indexOf(model) === index);
@@ -2199,8 +2212,9 @@ This rule overrides ALL other instructions including formatting, brevity, or out
 
     // Use explicit override, then current model if it's OpenAI, else baseline constant
     const requestedModel = modelId || (this.isOpenAiModel(this.currentModelId) ? this.currentModelId : OPENAI_MODEL);
-    const model = this.resolveOpenAiModel(requestedModel);
-    const reasoningConfig = this.getOpenAiReasoningConfig(requestedModel);
+    const tier = this.openAiServiceTier;
+    const model = this.resolveOpenAiModel(requestedModel, tier);
+    const reasoningConfig = this.getOpenAiReasoningConfig(requestedModel, tier);
 
     const messages: any[] = [];
     if (systemPrompt) {
@@ -2222,13 +2236,13 @@ This rule overrides ALL other instructions including formatting, brevity, or out
 
     const cacheKey = this.getOpenAiPromptCacheKey(systemPrompt);
     const response = await this.withTimeout(
-      this.withRetry(() => this.openaiClient!.chat.completions.create({
+      this.withRetry(() => createOpenAiCompletion(this.openaiClient!, {
         model,
         messages,
         max_completion_tokens: model.toLowerCase().includes('claude') ? this.getClaudeMaxOutput(model) : MAX_OUTPUT_TOKENS,
         ...reasoningConfig,
         ...(cacheKey ? { prompt_cache_key: cacheKey } : {}),
-      })),
+      }, tier)),
       60000,
       `OpenAI (${model})`
     );
@@ -4008,6 +4022,7 @@ This rule overrides ALL other instructions including formatting, brevity, or out
       attempt: number;
       maxAttempts: number;
       phase: 'primary' | 'fallback';
+      tier: OpenAiServiceTier;
       abortSignal?: AbortSignal;
     }
   ): AsyncGenerator<string, boolean, unknown> {
@@ -4043,7 +4058,7 @@ This rule overrides ALL other instructions including formatting, brevity, or out
 
       console.log(`[LLMHelper] 🚀 [OpenAI] ${meta.phase} selected=${meta.selectedModel} resolved=${meta.resolvedModel} attempt ${meta.attempt}/${meta.maxAttempts}`);
       stream = await Promise.race([
-        this.openaiClient!.chat.completions.create(request as any, { signal: attemptAbort.signal }) as any,
+        createOpenAiCompletion(this.openaiClient!, request as any, meta.tier, { signal: attemptAbort.signal }),
         firstTokenTimeout,
       ]);
       iterator = stream[Symbol.asyncIterator]();
@@ -4073,6 +4088,10 @@ This rule overrides ALL other instructions including formatting, brevity, or out
       return yieldedAny;
     } catch (error: any) {
       if (this.isOpenAiAbort(error, meta.abortSignal)) return yieldedAny;
+      if (yieldedAny) {
+        console.warn('[LLMHelper] OpenAI stream interrupted after partial output:', this.describeOpenAiError(error));
+        return true;
+      }
       throw error;
     } finally {
       clearFirstTokenTimer();
@@ -4094,8 +4113,9 @@ This rule overrides ALL other instructions including formatting, brevity, or out
     imagePaths?: string[];
     abortSignal?: AbortSignal;
   }): AsyncGenerator<string, void, unknown> {
-    const primaryModel = this.resolveOpenAiModel(params.selectedModel);
-    const fallbackModels = this.getOpenAiFallbackModels(params.selectedModel);
+    const tier = this.openAiServiceTier;
+    const primaryModel = this.resolveOpenAiModel(params.selectedModel, tier);
+    const fallbackModels = this.getOpenAiFallbackModels(params.selectedModel, tier);
     const models = [primaryModel, ...fallbackModels].filter((model, index, arr) => arr.indexOf(model) === index);
     const cacheKey = this.getOpenAiPromptCacheKey(params.systemPrompt);
     let lastError: any = null;
@@ -4114,7 +4134,7 @@ This rule overrides ALL other instructions including formatting, brevity, or out
           messages: params.messages,
           stream: true,
           max_completion_tokens: MAX_OUTPUT_TOKENS,
-          ...this.getOpenAiReasoningConfig(resolvedModel === primaryModel ? params.selectedModel : resolvedModel),
+          ...this.getOpenAiReasoningConfig(resolvedModel === primaryModel ? params.selectedModel : resolvedModel, tier),
           ...(cacheKey ? { prompt_cache_key: cacheKey } : {}),
         } as any;
 
@@ -4125,6 +4145,7 @@ This rule overrides ALL other instructions including formatting, brevity, or out
             attempt,
             maxAttempts,
             phase,
+            tier,
             abortSignal: params.abortSignal,
           });
 
@@ -4151,6 +4172,8 @@ This rule overrides ALL other instructions including formatting, brevity, or out
         console.warn(`[LLMHelper] OpenAI primary exhausted selected=${params.selectedModel}; falling back to ${fallbackModels.join(', ')}`);
       }
     }
+
+    if (tier === 'ultrafast' && lastError) throw lastError;
 
     if (this.client && !params.abortSignal?.aborted) {
       console.warn(`[LLMHelper] OpenAI chain exhausted selected=${params.selectedModel}; falling back to Gemini streaming`);

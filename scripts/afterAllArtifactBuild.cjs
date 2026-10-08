@@ -231,10 +231,10 @@ module.exports = async function afterAllArtifactBuild(buildResult) {
   }
 
   // Map electron-builder's arch output dirs to their final dmg names. eb names the
-  // arm64 dmg "<name>-arm64.dmg" and the x64 dmg "<name>.dmg" (matching latest-mac.yml).
+  // Both DMGs include their architecture in the filename.
   const archMap = [
     { archDir: 'mac-arm64', suffix: '-arm64' },
-    { archDir: 'mac', suffix: '' },
+    { archDir: 'mac', suffix: '-x64' },
   ];
 
   const rebuiltDmgs = [];

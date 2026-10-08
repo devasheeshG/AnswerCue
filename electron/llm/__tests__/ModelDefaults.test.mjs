@@ -72,9 +72,10 @@ test('cloud defaults stay aligned across runtime constants and connection tests'
   assert.match(llmHelper, /const OPENAI_MODEL = DEFAULT_OPENAI_MODEL/);
   assert.match(llmHelper, /const CLAUDE_MODEL = DEFAULT_CLAUDE_MODEL/);
   assert.match(llmHelper, /const GEMINI_FLASH_MODEL = "gemini-3.5-flash"/);
-  assert.match(ipcHandlers, /model:\s*DEFAULT_OPENAI_MODEL/);
+  assert.match(ipcHandlers, /getPreferredModel\('openai'\) \|\| DEFAULT_OPENAI_MODEL/);
+  assert.match(ipcHandlers, /resolveOpenAiTierModel\(selectedModel, tier\)/);
   assert.match(ipcHandlers, /model:\s*DEFAULT_CLAUDE_MODEL/);
-  assert.match(ipcHandlers, /max_completion_tokens:\s*10/);
+  assert.match(ipcHandlers, /max_completion_tokens:\s*128/);
   assert.match(ipcHandlers, /models\/gemini-3.5-flash:generateContent/);
 });
 

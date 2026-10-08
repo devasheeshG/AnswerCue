@@ -1,3 +1,4 @@
+import { isOpenAiServiceTier, resolveOpenAiTierModel, normalizeOpenAiServiceTier, buildOpenAiResponsesRequest } from './llm/openAiServiceTier';
 // ipcHandlers.ts
 
 import * as crypto from 'crypto';
@@ -1392,6 +1393,24 @@ export function initializeIpcHandlers(appState: AppState): void {
       return { success: true };
     } catch (error: any) {
       console.error('Error saving Groq API key:', error);
+      return { success: false, error: error.message };
+    }
+  });
+
+  safeHandle('get-openai-service-tier', () => ({
+    tier: appState.processingHelper.getLLMHelper().getOpenAiServiceTier(),
+  }));
+
+  safeHandle('set-openai-service-tier', (_, tier: unknown) => {
+    if (!isOpenAiServiceTier(tier)) return { success: false, error: 'Invalid OpenAI response tier' };
+    try {
+      SettingsManager.getInstance().set('openAiServiceTier', tier);
+      appState.processingHelper.getLLMHelper().setOpenAiServiceTier(tier);
+      BrowserWindow.getAllWindows().forEach(win => {
+        if (!win.isDestroyed()) win.webContents.send('openai-service-tier-changed', tier);
+      });
+      return { success: true, tier };
+    } catch (error: any) {
       return { success: false, error: error.message };
     }
   });
@@ -2812,18 +2831,25 @@ export function initializeIpcHandlers(appState: AppState): void {
             },
           );
         } else if (provider === 'openai') {
+          const tier = normalizeOpenAiServiceTier(SettingsManager.getInstance().get('openAiServiceTier'));
+          const { CredentialsManager } = require('./services/CredentialsManager');
+          const selectedModel = CredentialsManager.getInstance().getPreferredModel('openai') || DEFAULT_OPENAI_MODEL;
+          const request = {
+            model: resolveOpenAiTierModel(selectedModel, tier),
+            messages: [{ role: 'user', content: 'Reply with OK.' }],
+            max_completion_tokens: 128,
+            reasoning_effort: 'low',
+          };
           response = await axios.post(
-            'https://api.openai.com/v1/chat/completions',
-            {
-              model: DEFAULT_OPENAI_MODEL,
-              messages: [{ role: 'user', content: 'Hello' }],
-              max_completion_tokens: 10,
+            tier === 'ultrafast' ? 'https://api.openai.com/v1/responses' : 'https://api.openai.com/v1/chat/completions',
+            tier === 'ultrafast' ? buildOpenAiResponsesRequest(request) : {
+              ...request, service_tier: tier === 'fast' ? 'priority' : tier,
             },
-            {
-              headers: { Authorization: `Bearer ${apiKey}` },
-              timeout: 15000,
-            },
+            { headers: { Authorization: `Bearer ${apiKey}` }, timeout: 45000 },
           );
+          if (tier === 'ultrafast' && response.data?.status !== 'completed') {
+            return { success: false, error: response.data?.error?.message || 'OpenAI response did not complete' };
+          }
         } else if (provider === 'claude') {
           response = await axios.post(
             'https://api.anthropic.com/v1/messages',

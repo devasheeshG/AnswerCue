@@ -2,7 +2,7 @@
 
 ## Git Workflow
 
-- This checkout tracks the public fork at `origin`: `https://github.com/FarzamHejaziK/AnswerCue.git`.
+- This checkout tracks the public fork at `origin`: `git@github.com:devasheeshG/AnswerCue.git`.
 - The original upstream project is configured as `upstream`; use `git remote -v` if you need the exact remote URL.
 - Push local work to `origin`, not `upstream`.
 - Keep the local `upstream` push URL disabled unless the user explicitly asks to change it.

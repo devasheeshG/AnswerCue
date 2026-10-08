@@ -7,15 +7,15 @@
 **Open-source desktop interview assistant for prep, live transcription, real-time answer support, and post-interview follow-up.**
 
 [![License](https://img.shields.io/badge/License-AGPL--3.0-blue?style=flat-square)](LICENSE)
-[![Platform](https://img.shields.io/badge/Platform-macOS%20%7C%20Windows-6D5DF6?style=flat-square)](https://github.com/FarzamHejaziK/AnswerCue/releases)
-[![Latest Release](https://img.shields.io/github/v/release/FarzamHejaziK/AnswerCue?style=flat-square&color=22C55E)](https://github.com/FarzamHejaziK/AnswerCue/releases/latest)
-[![Downloads](https://img.shields.io/github/downloads/FarzamHejaziK/AnswerCue/total?style=flat-square&color=success)](https://github.com/FarzamHejaziK/AnswerCue/releases)
-[![Build Windows](https://img.shields.io/github/actions/workflow/status/FarzamHejaziK/AnswerCue/build-windows.yml?branch=main&label=Windows%20build&style=flat-square)](https://github.com/FarzamHejaziK/AnswerCue/actions/workflows/build-windows.yml)
-[![Release macOS](https://img.shields.io/github/actions/workflow/status/FarzamHejaziK/AnswerCue/release-macos.yml?branch=main&label=macOS%20release&style=flat-square)](https://github.com/FarzamHejaziK/AnswerCue/actions/workflows/release-macos.yml)
+[![Platform](https://img.shields.io/badge/Platform-macOS%20%7C%20Windows-6D5DF6?style=flat-square)](https://github.com/devasheeshG/AnswerCue/releases)
+[![Latest Release](https://img.shields.io/github/v/release/devasheeshG/AnswerCue?style=flat-square&color=22C55E)](https://github.com/devasheeshG/AnswerCue/releases/latest)
+[![Downloads](https://img.shields.io/github/downloads/devasheeshG/AnswerCue/total?style=flat-square&color=success)](https://github.com/devasheeshG/AnswerCue/releases)
+[![Build Windows](https://img.shields.io/github/actions/workflow/status/devasheeshG/AnswerCue/build-windows.yml?branch=main&label=Windows%20build&style=flat-square)](https://github.com/devasheeshG/AnswerCue/actions/workflows/build-windows.yml)
+[![Release macOS](https://img.shields.io/github/actions/workflow/status/devasheeshG/AnswerCue/release-macos.yml?branch=main&label=macOS%20release&style=flat-square)](https://github.com/devasheeshG/AnswerCue/actions/workflows/release-macos.yml)
 
-[Download Latest Release](https://github.com/FarzamHejaziK/AnswerCue/releases/latest) ·
-[Report an Issue](https://github.com/FarzamHejaziK/AnswerCue/issues) ·
-[View Source](https://github.com/FarzamHejaziK/AnswerCue)
+[Download Latest Release](https://github.com/devasheeshG/AnswerCue/releases/latest) ·
+[Report an Issue](https://github.com/devasheeshG/AnswerCue/issues) ·
+[View Source](https://github.com/devasheeshG/AnswerCue)
 
 Requires macOS 12+ on Apple Silicon or Intel, or Windows 10/11 on Intel/AMD 64-bit.
 
@@ -35,9 +35,9 @@ Installers are published from GitHub Releases.
 
 | Platform | Download | Notes |
 | --- | --- | --- |
-| Windows 10/11 x64 | [Latest release assets](https://github.com/FarzamHejaziK/AnswerCue/releases/latest) | NSIS installer. Current builds are configured for Azure Artifact Signing through the repository signing secrets. |
-| macOS Apple Silicon | [Latest release assets](https://github.com/FarzamHejaziK/AnswerCue/releases/latest) | Use the Apple Silicon ZIP/DMG artifact when available. |
-| macOS Intel | [Latest release assets](https://github.com/FarzamHejaziK/AnswerCue/releases/latest) | Use the Intel DMG/ZIP artifact when available. |
+| Windows 10/11 x64 | [Latest release assets](https://github.com/devasheeshG/AnswerCue/releases/latest) | NSIS installer. Current builds are configured for Azure Artifact Signing through the repository signing secrets. |
+| macOS Apple Silicon | [Latest release assets](https://github.com/devasheeshG/AnswerCue/releases/latest) | Use the Apple Silicon ZIP/DMG artifact when available. |
+| macOS Intel | [Latest release assets](https://github.com/devasheeshG/AnswerCue/releases/latest) | Use the Intel DMG/ZIP artifact when available. |
 
 If your operating system warns about an unsigned or newly signed build, make sure you downloaded it from the official AnswerCue release page.
 
@@ -70,13 +70,13 @@ AnswerCue is focused on interview workflows, not a generic meeting dashboard.
 Main repository:
 
 ```bash
-https://github.com/FarzamHejaziK/AnswerCue
+https://github.com/devasheeshG/AnswerCue
 ```
 
 Clone:
 
 ```bash
-git clone https://github.com/FarzamHejaziK/AnswerCue.git
+git clone https://github.com/devasheeshG/AnswerCue.git
 cd AnswerCue
 ```
 
@@ -210,7 +210,7 @@ The prep context must be included in live interview answer generation, not only 
 
 This checkout tracks:
 
-- `origin`: `https://github.com/FarzamHejaziK/AnswerCue.git`
+- `origin`: `https://github.com/devasheeshG/AnswerCue.git`
 - `upstream`: original project remote, fetch-only
 
 Push AnswerCue work to `origin`, not `upstream`.

@@ -1,3 +1,4 @@
+import { OPENAI_SERVICE_TIERS, type OpenAiServiceTier } from '../../../electron/llm/openAiServiceTier';
 import React, { useEffect, useMemo, useState } from 'react';
 import { ChevronDown, Check } from 'lucide-react';
 import { isAllowedStandardCloudModel, STANDARD_CLOUD_MODELS, prettifyModelId } from '../../utils/modelUtils';
@@ -119,6 +120,10 @@ export const AIProvidersSettings: React.FC = () => {
     const [savingStatus, setSavingStatus] = useState<Record<string, boolean>>({});
     const [testStatus, setTestStatus] = useState<Record<string, 'idle' | 'testing' | 'success' | 'error'>>({});
     const [testError, setTestError] = useState<Record<string, string>>({});
+    const [openAiTier, setOpenAiTier] = useState<OpenAiServiceTier>('auto');
+    const [tierLoaded, setTierLoaded] = useState(false);
+    const [tierSaving, setTierSaving] = useState(false);
+    const [tierError, setTierError] = useState('');
     const [providerDataScopes, setProviderDataScopes] = useState<ProviderDataScopes>({});
 
     useEffect(() => {
@@ -160,6 +165,29 @@ export const AIProvidersSettings: React.FC = () => {
             : undefined;
         return () => unsubscribeProviderDataScopes?.();
     }, []);
+
+    useEffect(() => {
+        window.electronAPI.getOpenAiServiceTier()
+            .then(result => { setOpenAiTier(result.tier); setTierLoaded(true); })
+            .catch(() => setTierError('Could not load your saved response tier. Reopen Settings to retry.'));
+        return window.electronAPI.onOpenAiServiceTierChanged(setOpenAiTier);
+    }, []);
+
+    const handleTierChange = async (tier: OpenAiServiceTier) => {
+        setTierSaving(true);
+        setTierError('');
+        try {
+            const result = await window.electronAPI.setOpenAiServiceTier(tier);
+            if (!result.success) throw new Error(result.error || 'Could not save response tier');
+            setOpenAiTier(tier);
+            setTestStatus(prev => ({ ...prev, openai: 'idle' }));
+            setTestError(prev => ({ ...prev, openai: '' }));
+        } catch (error: any) {
+            setTierError(error.message || 'Could not save response tier');
+        } finally {
+            setTierSaving(false);
+        }
+    };
 
     const defaultModelOptions = useMemo<ModelOption[]>(() => {
         const options: ModelOption[] = [];
@@ -319,7 +347,36 @@ export const AIProvidersSettings: React.FC = () => {
                             keyPlaceholder={PROVIDER_KEY_PLACEHOLDERS[provider]}
                             keyUrl={PROVIDER_KEY_URLS[provider]}
                             onPreferredModelChange={(model) => handlePreferredModelChange(provider, model)}
-                        />
+                        >
+                            {provider === 'openai' && (
+                                <div className="mt-4 pt-4 border-t border-border-subtle">
+                                    <div className="flex items-center justify-between gap-4">
+                                        <label htmlFor="openai-response-tier" className="text-xs font-medium text-text-primary uppercase tracking-wide">Default response tier</label>
+                                        <select
+                                            id="openai-response-tier"
+                                            value={openAiTier}
+                                            disabled={!tierLoaded || tierSaving}
+                                            onChange={event => void handleTierChange(event.target.value as OpenAiServiceTier)}
+                                            aria-describedby="openai-tier-description"
+                                            className="w-48 bg-bg-input border border-border-subtle rounded-lg px-3 py-2 text-xs text-text-primary focus:outline-none focus:border-accent-primary disabled:opacity-50"
+                                        >
+                                            {OPENAI_SERVICE_TIERS.map(tier => (
+                                                <option key={tier} value={tier}>{({ auto: 'Auto (project default)', default: 'Standard', fast: 'Fast (Priority)', ultrafast: 'Ultrafast' })[tier]}</option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                    <p id="openai-tier-description" className="text-[11px] text-text-secondary leading-relaxed mt-2">
+                                        {openAiTier === 'auto' && 'Uses your OpenAI project’s default tier.'}
+                                        {openAiTier === 'default' && 'Uses standard OpenAI pricing and performance.'}
+                                        {openAiTier === 'fast' && 'Requests faster processing for your selected OpenAI model, at a higher token price.'}
+                                        {openAiTier === 'ultrafast' && 'Uses GPT 6 Astra for all OpenAI answers, including screenshots and background requests. Higher pricing and lower rate limits apply.'}
+                                        {' '}Saved automatically for future OpenAI requests. Other providers and transcription keep their own settings.
+                                    </p>
+                                    {tierSaving && <p className="text-[11px] text-text-secondary mt-1" role="status">Saving…</p>}
+                                    {tierError && <p className="text-[11px] text-red-400 mt-1" role="alert">{tierError}</p>}
+                                </div>
+                            )}
+                        </ProviderCard>
                     ))}
                 </div>
             </div>

@@ -508,6 +508,9 @@ interface ElectronAPI {
   onGeminiStreamError: (callback: (error: string) => void) => () => void;
 
   onUndetectableChanged: (callback: (state: boolean) => void) => () => void;
+  getOpenAiServiceTier: () => Promise<{ tier: import('./llm/openAiServiceTier').OpenAiServiceTier }>;
+  setOpenAiServiceTier: (tier: import('./llm/openAiServiceTier').OpenAiServiceTier) => Promise<{ success: boolean; error?: string }>;
+  onOpenAiServiceTierChanged: (callback: (tier: import('./llm/openAiServiceTier').OpenAiServiceTier) => void) => () => void;
   onGroqFastTextChanged: (callback: (enabled: boolean) => void) => () => void;
   onModelChanged: (callback: (modelId: string) => void) => () => void;
 
@@ -1107,6 +1110,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // API Key Management
   setGeminiApiKey: (apiKey: string) => ipcRenderer.invoke('set-gemini-api-key', apiKey),
   setGroqApiKey: (apiKey: string) => ipcRenderer.invoke('set-groq-api-key', apiKey),
+  getOpenAiServiceTier: () => ipcRenderer.invoke('get-openai-service-tier'),
+  setOpenAiServiceTier: (tier: import('./llm/openAiServiceTier').OpenAiServiceTier) => ipcRenderer.invoke('set-openai-service-tier', tier),
+  onOpenAiServiceTierChanged: (callback: (tier: import('./llm/openAiServiceTier').OpenAiServiceTier) => void) => {
+    const subscription = (_: any, tier: import('./llm/openAiServiceTier').OpenAiServiceTier) => callback(tier);
+    ipcRenderer.on('openai-service-tier-changed', subscription);
+    return () => ipcRenderer.removeListener('openai-service-tier-changed', subscription);
+  },
   setOpenaiApiKey: (apiKey: string) => ipcRenderer.invoke('set-openai-api-key', apiKey),
   setClaudeApiKey: (apiKey: string) => ipcRenderer.invoke('set-claude-api-key', apiKey),
   setDeepseekApiKey: (apiKey: string) => ipcRenderer.invoke('set-deepseek-api-key', apiKey),

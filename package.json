@@ -1,6 +1,6 @@
 {
   "name": "answercue",
-  "version": "2.8.1",
+  "version": "2.8.2",
   "main": "dist-electron/electron/main.js",
   "description": "AnswerCue is a live interview assistant that helps prepare context, transcribe conversations, and generate AI-guided answers.",
   "scripts": {
@@ -85,7 +85,8 @@
         {
           "target": "dmg",
           "arch": [
-            "x64"
+            "x64",
+            "arm64"
           ]
         }
       ],
@@ -99,7 +100,8 @@
       }
     },
     "dmg": {
-      "size": "4g"
+      "size": "4g",
+      "artifactName": "${productName}-${version}-${arch}.${ext}"
     },
     "win": {
       "target": [
@@ -148,7 +150,7 @@
     "publish": [
       {
         "provider": "github",
-        "owner": "FarzamHejaziK",
+        "owner": "devasheeshG",
         "repo": "AnswerCue",
         "releaseType": "release"
       }

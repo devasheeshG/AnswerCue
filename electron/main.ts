@@ -845,6 +845,7 @@ export class AppState {
         llmHelper.setGroqFastTextMode(true);
         console.log('[AppState] Fast mode restored from settings');
       }
+      llmHelper.setOpenAiServiceTier(settingsManager.get('openAiServiceTier') || 'auto');
       llmHelper.setCodexCliConfig({
         enabled: !!settingsManager.get('codexCliEnabled'),
         path: settingsManager.get('codexCliPath') || 'codex',

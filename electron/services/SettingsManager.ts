@@ -1,3 +1,4 @@
+import type { OpenAiServiceTier } from '../llm/openAiServiceTier';
 import { app } from 'electron';
 import fs from 'fs';
 import path from 'path';
@@ -11,6 +12,7 @@ export interface AppSettings {
     verboseLogging?: boolean;
     actionButtonMode?: 'recap' | 'brainstorm';
     groqFastTextMode?: boolean;
+    openAiServiceTier?: OpenAiServiceTier;
     codexCliEnabled?: boolean;
     codexCliPath?: string;
     codexCliModel?: string;
