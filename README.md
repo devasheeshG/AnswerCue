@@ -39,6 +39,8 @@ Installers are published from GitHub Releases.
 | macOS Apple Silicon | [Latest release assets](https://github.com/devasheeshG/AnswerCue/releases/latest) | Use the Apple Silicon ZIP/DMG artifact when available. |
 | macOS Intel | [Latest release assets](https://github.com/devasheeshG/AnswerCue/releases/latest) | Use the Intel DMG/ZIP artifact when available. |
 
+This fork's macOS builds are ad-hoc signed unless Apple signing/notarization secrets are configured. The release workflow verifies package signatures, but these builds are not automatically trusted by Gatekeeper. Download only from this fork's GitHub Releases, copy AnswerCue into Applications, and follow the signing/installation notes for that version.
+
 If your operating system warns about an unsigned or newly signed build, make sure you downloaded it from the official AnswerCue release page.
 
 ## Why AnswerCue?
