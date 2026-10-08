@@ -58,9 +58,9 @@ Use the actual publication date. Historical v2.8.0 and v2.8.1 notes retain their
 
 ## Production Build
 
-The macOS workflow sets `ANSWERCUE_PRODUCTION_BUILD=1` when building Electron. This bundles the main process, preload, and speech worker without source maps or redundant development entry points. The build cleans its output first so removed modules cannot remain in the package.
+The macOS workflow sets `ANSWERCUE_PRODUCTION_BUILD=1` when building Electron. This bundles the main process and preload without source maps or redundant development entry points. The build cleans its output first so removed modules cannot remain in the package.
 
-MiniLM embeddings, MobileBERT classification weights, vector-search modules, and sqlite-vec are removed as of v2.8.5. Retain Hugging Face Transformers and ONNX Runtime: local speech transcription still requires them. Moonshine downloads during setup, rather than being embedded in the DMG.
+MiniLM embeddings, MobileBERT classification weights, vector-search modules, and sqlite-vec were removed in v2.8.5. v2.8.6 also removes local speech models, the speech worker, model downloads, Hugging Face Transformers, and ONNX Runtime. Transcription uses OpenAI or ElevenLabs WebSocket sessions.
 
 ## macOS Artifacts
 

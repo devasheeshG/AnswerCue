@@ -1,6 +1,6 @@
 {
   "name": "answercue",
-  "version": "2.8.5",
+  "version": "2.8.6",
   "main": "dist-electron/electron/main.js",
   "description": "AnswerCue is a live interview assistant that helps prepare context, transcribe conversations, and generate AI-guided answers.",
   "scripts": {
@@ -12,12 +12,12 @@
     "typecheck:electron": "tsc -p electron/tsconfig.json --noEmit",
     "verify:package-inputs": "node scripts/verify-package-inputs.js",
     "preview": "vite preview",
-    "postinstall": "cross-env SHARP_IGNORE_GLOBAL_LIBVIPS=1 npm rebuild sharp && electron-rebuild -f -w better-sqlite3,keytar && node scripts/download-models.js && node scripts/patch-electron-plist.js",
+    "postinstall": "cross-env SHARP_IGNORE_GLOBAL_LIBVIPS=1 npm rebuild sharp && electron-rebuild -f -w better-sqlite3,keytar && node scripts/patch-electron-plist.js",
     "electron:dev": "npm run build:electron && cross-env NODE_ENV=development electron .",
     "electron:build": "npm run build:electron && cross-env NODE_ENV=production electron .",
     "app:dev": "concurrently \"npm run dev -- --port 5180 --strictPort\" \"wait-on http://localhost:5180 && npm run electron:dev\"",
-    "app:build": "npm run build && npm run build:electron && cross-env ANSWERCUE_BUILD_ALL_MAC_ARCHES=1 npm run build:native && node scripts/download-models.js && node scripts/ensure-sharp-mac-deps.js && electron-builder",
-    "app:build:signed": "npm run build && npm run build:electron && cross-env ANSWERCUE_BUILD_ALL_MAC_ARCHES=1 npm run build:native && node scripts/download-models.js && node scripts/ensure-sharp-mac-deps.js && electron-builder --config electron-builder.signed.cjs",
+    "app:build": "npm run build && npm run build:electron && cross-env ANSWERCUE_BUILD_ALL_MAC_ARCHES=1 npm run build:native && node scripts/ensure-sharp-mac-deps.js && electron-builder",
+    "app:build:signed": "npm run build && npm run build:electron && cross-env ANSWERCUE_BUILD_ALL_MAC_ARCHES=1 npm run build:native && node scripts/ensure-sharp-mac-deps.js && electron-builder --config electron-builder.signed.cjs",
     "watch": "tsc -p electron/tsconfig.json --watch",
     "start": "npm run app:dev",
     "dist": "npm run app:build",
@@ -184,20 +184,16 @@
     "vite": "^5.4.11",
     "vite-plugin-electron": "^0.28.8",
     "vite-plugin-electron-renderer": "^0.14.6",
-    "wait-on": "^8.0.1"
+    "wait-on": "^8.0.1",
+    "@google-cloud/speech": "^7.2.1",
+    "@deepgram/sdk": "^3.13.0"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.74.0",
     "@bany/curl-to-json": "^1.2.10",
-    "@deepgram/sdk": "^3.13.0",
     "@elevenlabs/client": "^0.15.1",
-    "@elevenlabs/elevenlabs-js": "^2.39.0",
-    "@google-cloud/speech": "^7.2.1",
     "@google/genai": "^1.44.0",
     "@google/stitch-sdk": "^0.0.3",
-    "@grpc/grpc-js": "^1.14.3",
-    "@grpc/proto-loader": "^0.8.0",
-    "@huggingface/transformers": "^3.8.1",
     "@radix-ui/react-dialog": "^1.1.2",
     "@radix-ui/react-toast": "^1.2.2",
     "@tanstack/react-query": "^5.100.10",
@@ -223,7 +219,6 @@
     "lucide-react": "^0.460.0",
     "mammoth": "^1.11.0",
     "marked": "^18.0.4",
-    "onnxruntime-node": "1.22.0",
     "openai": "^6.22.0",
     "pdf-parse": "^2.4.5",
     "qrcode": "^1.5.4",
@@ -246,8 +241,5 @@
     "tree-kill": "^1.2.2",
     "uuid": "^11.0.3",
     "ws": "^8.19.0"
-  },
-  "overrides": {
-    "onnxruntime-node": "1.22.0"
   }
 }

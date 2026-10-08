@@ -2083,7 +2083,8 @@ export function initializeIpcHandlers(appState: AppState): void {
         hasDeepseekKey: hasKey(creds.deepseekApiKey),
         hasAnswerCueKey: hasKey(creds.nativelyApiKey),
         googleServiceAccountPath: creds.googleServiceAccountPath || null,
-        sttProvider: 'local-whisper',
+        sttProvider: CredentialsManager.getInstance().getSttProvider(),
+        transcriptionModel: CredentialsManager.getInstance().getTranscriptionModel(),
         groqSttModel: creds.groqSttModel || 'whisper-large-v3-turbo',
         hasSttGroqKey: hasKey(creds.groqSttApiKey),
         hasSttOpenaiKey: hasKey(creds.openAiSttApiKey),
@@ -2123,7 +2124,7 @@ export function initializeIpcHandlers(appState: AppState): void {
         hasDeepseekKey: false,
         hasAnswerCueKey: false,
         googleServiceAccountPath: null,
-        sttProvider: 'local-whisper',
+        sttProvider: 'openai',
         groqSttModel: 'whisper-large-v3-turbo',
         hasSttGroqKey: false,
         hasSttOpenaiKey: false,
@@ -2652,150 +2653,40 @@ export function initializeIpcHandlers(appState: AppState): void {
     },
   );
 
-  // ==========================================
-  // Local Whisper STT Handlers
-  // ==========================================
-
-  const activeWhisperDownloads = new Set<string>();
-
-  safeHandle('local-whisper-get-models', async () => {
+  safeHandle('get-transcription-config', () => {
+    const { CredentialsManager } = require('./services/CredentialsManager');
+    const cm = CredentialsManager.getInstance();
+    return { model: cm.getTranscriptionModel(), provider: cm.getSttProvider(), configured: cm.isTranscriptionConfigured() };
+  });
+  safeHandle('set-transcription-model', async (_, model: string) => {
     try {
-      const { DEFAULT_LOCAL_TRANSCRIPTION_MODEL_ID, getAvailableModels } = require('./audio/whisper/modelManager');
-      const models = getAvailableModels().filter((model: any) => model.id === DEFAULT_LOCAL_TRANSCRIPTION_MODEL_ID);
-      return { models, activeModelId: DEFAULT_LOCAL_TRANSCRIPTION_MODEL_ID };
-    } catch (e: any) {
-      console.error('[IPC] local-whisper-get-models error:', e.message);
-      return { models: [], activeModelId: '' };
-    }
-  });
-
-  safeHandle('local-whisper-set-model', async (_, _modelId: string) => {
-    try {
-      const { DEFAULT_LOCAL_TRANSCRIPTION_MODEL_ID } = require('./audio/whisper/modelManager');
-      SettingsManager.getInstance().set('localWhisperModel', DEFAULT_LOCAL_TRANSCRIPTION_MODEL_ID);
+      if (appState.getIsMeetingActive()) throw new Error('Stop the interview before changing transcription models');
+      const { CredentialsManager } = require('./services/CredentialsManager');
+      CredentialsManager.getInstance().setTranscriptionModel(model);
+      await appState.reconfigureSttProvider();
+      BrowserWindow.getAllWindows().forEach(win => { if (!win.isDestroyed()) win.webContents.send('credentials-changed'); });
       return { success: true };
-    } catch (e: any) {
-      return { success: false, error: e.message };
-    }
+    } catch (error: any) { return { success: false, error: error.message }; }
   });
-
-  // Per-channel model overrides (mic / system audio). When enabled, the two
-  // STT instances pick their own model via these slots. When disabled, both
-  // fall back to localWhisperModel (the existing global setting).
-  safeHandle('local-whisper-get-channel-config', async () => {
-    const { DEFAULT_LOCAL_TRANSCRIPTION_MODEL_ID } = require('./audio/whisper/modelManager');
-    return {
-      enabled: false,
-      micModelId: DEFAULT_LOCAL_TRANSCRIPTION_MODEL_ID,
-      systemModelId: DEFAULT_LOCAL_TRANSCRIPTION_MODEL_ID,
-      globalModelId: DEFAULT_LOCAL_TRANSCRIPTION_MODEL_ID,
-    };
-  });
-
-  safeHandle(
-    'local-whisper-set-channel-config',
-    async (_, _cfg: { enabled?: boolean; micModelId?: string; systemModelId?: string }) => {
-      try {
-        const sm = SettingsManager.getInstance();
-        const { DEFAULT_LOCAL_TRANSCRIPTION_MODEL_ID } = require('./audio/whisper/modelManager');
-        sm.set('localWhisperPerChannelEnabled', false);
-        sm.set('localWhisperModelMic', DEFAULT_LOCAL_TRANSCRIPTION_MODEL_ID);
-        sm.set('localWhisperModelSystem', DEFAULT_LOCAL_TRANSCRIPTION_MODEL_ID);
-        sm.set('localWhisperModel', DEFAULT_LOCAL_TRANSCRIPTION_MODEL_ID);
-        return { success: true };
-      } catch (e: any) {
-        return { success: false, error: e.message };
-      }
-    },
-  );
-
-  safeHandle('local-whisper-delete-model', async (_, modelId: string) => {
-    try {
-      const { deleteModel } = require('./audio/whisper/modelManager');
-      deleteModel(modelId);
-      return { success: true };
-    } catch (e: any) {
-      return { success: false, error: e.message };
-    }
-  });
-
-  safeHandle('local-whisper-start-download', async (event, _modelId: string) => {
-    const { DEFAULT_LOCAL_TRANSCRIPTION_MODEL_ID, isModelCached } = require('./audio/whisper/modelManager');
-    const { resolveInferenceConfig } = require('./audio/whisper/inferenceConfig');
-    const modelId = DEFAULT_LOCAL_TRANSCRIPTION_MODEL_ID;
-    if (activeWhisperDownloads.has(modelId)) {
-      return { success: false, error: 'already-downloading' };
-    }
-    const { dtype } = resolveInferenceConfig();
-    if (isModelCached(modelId, dtype)) {
-      setImmediate(() => {
-        if (!event.sender.isDestroyed()) {
-          event.sender.send('local-whisper-download-complete', { modelId });
-        }
-      });
-      return { success: true };
-    }
-    activeWhisperDownloads.add(modelId);
-    try {
-      const { Worker } = require('worker_threads');
-      const { buildWorkerInitMessage } = require('./audio/whisper/inferenceConfig');
-      const { resolveWhisperWorkerPath } = require('./audio/whisper/workerPathResolver');
-      const workerPath = resolveWhisperWorkerPath();
-      const w = new Worker(workerPath);
-      const sender = event.sender;
-      w.on('message', (msg: any) => {
-        if (sender.isDestroyed()) return;
-        if (msg.type === 'progress') {
-          sender.send('local-whisper-download-progress', { modelId, progress: msg.progress });
-        } else if (msg.type === 'ready') {
-          activeWhisperDownloads.delete(modelId);
-          sender.send('local-whisper-download-complete', { modelId });
-          w.terminate();
-        } else if (msg.type === 'error') {
-          activeWhisperDownloads.delete(modelId);
-          sender.send('local-whisper-download-error', { modelId, error: msg.message });
-          w.terminate();
-        }
-      });
-      w.on('error', (err: Error) => {
-        activeWhisperDownloads.delete(modelId);
-        if (!sender.isDestroyed()) {
-          sender.send('local-whisper-download-error', { modelId, error: err.message });
-        }
-      });
-      w.postMessage(buildWorkerInitMessage(modelId, { allowRemoteModels: true }));
-      return { success: true };
-    } catch (e: any) {
-      activeWhisperDownloads.delete(modelId);
-      return { success: false, error: e.message };
-    }
-  });
-
-  safeHandle('local-whisper-preload', async (_, _modelId: string) => {
-    try {
-      const { modelPreloader } = require('./audio/whisper/modelPreloader');
-      const { DEFAULT_LOCAL_TRANSCRIPTION_MODEL_ID, isModelCached } = require('./audio/whisper/modelManager');
-      const { resolveInferenceConfig } = require('./audio/whisper/inferenceConfig');
-      const id = DEFAULT_LOCAL_TRANSCRIPTION_MODEL_ID;
-      // Pass active dtype so the cache check verifies the SPECIFIC ONNX
-      // files (e.g. encoder_model.onnx for fp32) are present — not just
-      // "directory non-empty". Otherwise a v2-cached _quantized.onnx-only
-      // directory would be reported "available" but trigger a 142MB
-      // background fetch on first start().
-      const { dtype } = resolveInferenceConfig();
-      if (!isModelCached(id, dtype)) {
-        return { success: false, reason: 'model-not-cached' };
-      }
-      modelPreloader.preload(id);
-      return { success: true };
-    } catch (e: any) {
-      return { success: false, error: e.message };
-    }
-  });
-
-  safeHandle('local-whisper-get-hardware', () => {
-    const { detectHardware } = require('./audio/whisper/hardwareDetect');
-    return detectHardware();
+  safeHandle('test-transcription-connection', async (_, provider: string, suppliedKey?: string) => {
+    const { CredentialsManager } = require('./services/CredentialsManager');
+    const { CloudTranscriptionSTT } = require('./audio/CloudTranscriptionSTT');
+    const cm = CredentialsManager.getInstance();
+    if (provider !== 'openai' && provider !== 'elevenlabs') return { success: false, error: 'Unsupported transcription provider' };
+    const key = suppliedKey?.trim() || (provider === 'openai' ? cm.getOpenAiSttApiKey() : cm.getElevenLabsApiKey());
+    if (!key) return { success: false, error: 'Save an API key first' };
+    return new Promise(resolve => {
+      const stt = new CloudTranscriptionSTT(key, provider === 'openai' ? 'gpt-live-transcribe' : 'scribe_v2_realtime');
+      let settled = false;
+      const finish = (result: { success: boolean; error?: string }) => {
+        if (settled) return;
+        settled = true; clearTimeout(timer); stt.stop(); resolve(result);
+      };
+      const timer = setTimeout(() => finish({ success: false, error: 'Provider session timed out' }), 16000);
+      stt.on('connected', () => finish({ success: true }));
+      stt.on('error', (error: Error) => finish({ success: false, error: error.message }));
+      try { stt.start(); } catch { finish({ success: false, error: 'Could not start transcription connection' }); }
+    });
   });
 
   safeHandle(
@@ -3204,6 +3095,8 @@ export function initializeIpcHandlers(appState: AppState): void {
 
   safeHandle('start-meeting', async (event, metadata?: any) => {
     try {
+      const { CredentialsManager } = require('./services/CredentialsManager');
+      if (!CredentialsManager.getInstance().isTranscriptionConfigured()) throw new Error('Configure a transcription API key in Settings → AI Providers');
       await appState.startMeeting(metadata);
       return { success: true };
     } catch (error: any) {

@@ -22,6 +22,6 @@ test('endMeeting always clears draining state after background teardown', () => 
   assert.ok(clearIndex > finallyIndex, '_isDraining must be cleared inside finally');
 });
 
-test('endMeeting keeps draining enabled during STT grace window', () => {
-  assert.match(endMeetingSource, /this\._isDraining = true;[\s\S]*await new Promise\(resolve => setTimeout\(resolve, 250\)\);/);
+test('endMeeting keeps draining enabled while awaiting both cloud transcript drains', () => {
+  assert.match(endMeetingSource, /this\._isDraining = true;[\s\S]*await Promise\.all\(\[[\s\S]*this\.googleSTT\?\.drain\?\.\(2000\)[\s\S]*this\.googleSTT_User\?\.drain\?\.\(2000\)/);
 });

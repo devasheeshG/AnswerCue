@@ -30,7 +30,7 @@ const findTs = (dir) => {
 const electronDir = path.resolve(rootDir, 'electron');
 if (fs.existsSync(electronDir)) {
   entryPoints.push(...(production
-    ? ['electron/main.ts', 'electron/preload.ts', 'electron/audio/whisper/whisperWorker.ts']
+    ? ['electron/main.ts', 'electron/preload.ts']
     : findTs(electronDir).map(f => path.relative(rootDir, f))));
 }
 

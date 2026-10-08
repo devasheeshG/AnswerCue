@@ -158,14 +158,6 @@ export interface ElectronAPI {
   // STT Provider Management
   setSttProvider: (provider: 'none' | 'google' | 'groq' | 'openai' | 'deepgram' | 'elevenlabs' | 'azure' | 'ibmwatson' | 'soniox' | 'natively' | 'local-whisper') => Promise<{ success: boolean; error?: string }>
   getSttProvider: () => Promise<string>
-  localWhisperGetModels: () => Promise<{ models: Array<{ id: string; name: string; sizeMb: number; status: 'available' | 'missing' | 'downloading' | 'error'; errorMessage?: string }>; activeModelId: string }>
-  localWhisperSetModel: (modelId: string) => Promise<{ success: boolean; error?: string }>
-  localWhisperDeleteModel: (modelId: string) => Promise<{ success: boolean; error?: string }>
-  localWhisperStartDownload: (modelId: string) => Promise<{ success: boolean; error?: string }>
-  onLocalWhisperDownloadProgress: (callback: (data: { modelId: string; progress: number }) => void) => () => void
-  onLocalWhisperDownloadComplete: (callback: (data: { modelId: string }) => void) => () => void
-  onLocalWhisperDownloadError: (callback: (data: { modelId: string; error: string }) => void) => () => void
-  localWhisperPreload: (modelId?: string) => Promise<{ success: boolean; reason?: string; error?: string }>
   setGroqSttApiKey: (apiKey: string) => Promise<{ success: boolean; error?: string }>
   setOpenAiSttApiKey: (apiKey: string) => Promise<{ success: boolean; error?: string }>
   setOpenAiSttBaseUrl: (url: string) => Promise<{ success: boolean; error?: string }>
@@ -178,6 +170,10 @@ export interface ElectronAPI {
   setSonioxApiKey: (apiKey: string) => Promise<{ success: boolean; error?: string }>
   setIbmWatsonRegion: (region: string) => Promise<{ success: boolean; error?: string }>
   testSttConnection: (provider: 'groq' | 'openai' | 'deepgram' | 'elevenlabs' | 'azure' | 'ibmwatson' | 'soniox', apiKey: string, region?: string) => Promise<{ success: boolean; error?: string }>
+
+  getTranscriptionConfig: () => Promise<{ model: string; provider: string; configured: boolean }>;
+  setTranscriptionModel: (model: string) => Promise<{ success: boolean; error?: string }>;
+  testTranscriptionConnection: (provider: string, key?: string) => Promise<{ success: boolean; error?: string }>;
 
   // STT Config Events (fired when STT provider/key changes during a meeting)
   onSttConfigChanged: (callback: (data: { configured: boolean; provider: string }) => void) => () => void

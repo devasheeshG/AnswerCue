@@ -45,7 +45,9 @@ If only one provider key is saved, the active model should come from that provid
 
 ## Audio And Transcription
 
-AnswerCue uses the local Moonshine Base model for transcription after it is downloaded during setup. Users should not need to select a transcription model.
+In Settings → AI Providers, use the Transcription providers section to save an OpenAI or ElevenLabs key. Choose GPT Live Transcribe or Scribe v2 Realtime in the searchable Active transcription model dropdown. The selection applies to both microphone and meeting audio. OpenAI can reuse the saved LLM key if no separate transcription key is supplied.
+
+No local speech model is included or downloaded. Audio streams to the chosen provider while the interview is active; internet and paid API access are required. Test Connection checks session access without recording audio. Stop the interview before changing transcription settings.
 
 AnswerCue needs two audio paths:
 

@@ -1,3 +1,5 @@
+> Historical guide for versions up to v2.8.5. As of v2.8.6, local transcription and model downloads are removed. Configure OpenAI or ElevenLabs in Settings → AI Providers instead.
+
 # AnswerCue Local Transcription Setup
 
 AnswerCue uses a packaged local Moonshine Base model for transcription. The user should not need to choose a cloud speech provider or configure a separate local transcription server.

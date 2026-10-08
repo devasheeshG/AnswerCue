@@ -54,11 +54,9 @@ function wireConnectedStatus(stt, sendSttStatus) {
   });
 }
 
-test('production AnswerCueProSTT wiring maps handshake connected to awaiting-audio', () => {
-  const nativelyBlockMatch = /if \(stt instanceof AnswerCueProSTT\) \{([\s\S]*?)\n    \}/.exec(mainSource);
-  assert.ok(nativelyBlockMatch, 'could not locate AnswerCueProSTT-specific wiring block in main.ts');
-
-  const nativelyBlock = nativelyBlockMatch[1];
+test('production cloud STT wiring maps handshake connected to awaiting-audio', () => {
+  const nativelyBlock = mainSource.slice(mainSource.indexOf("    stt.on('connected', () => {"), mainSource.indexOf("    // B2: Emit 'awaiting-audio' once"));
+  assert.ok(nativelyBlock, 'could not locate cloud STT connected wiring');
   assert.ok(/stt\.on\(\s*['"]connected['"]/.test(nativelyBlock), 'BUG: main.ts must listen for AnswerCueProSTT connected events.');
   assert.ok(/_consecutiveErrors\s*=\s*0/.test(nativelyBlock), 'BUG: connected handshake must reset consecutive STT errors.');
   assert.ok(/_lastState\s*=\s*['"]awaiting-audio['"]/.test(nativelyBlock), 'BUG: connected handshake must enter awaiting-audio, not connected.');

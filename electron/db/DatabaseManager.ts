@@ -1264,7 +1264,7 @@ Use **Undetectable** mode to keep the overlay out of normal screen sharing when 
    - **OpenAI**
    - **Gemini**
    - **Anthropic**
-4. Real-time transcription uses the local Moonshine Base model downloaded during setup. Configure your microphone and output device in **Settings → Audio**.
+4. Select OpenAI or ElevenLabs transcription and save its API key in **Settings → AI Providers**. Configure your microphone and output device in **Settings → Audio**.
 
 One working AI provider is enough to start. Add more providers only if you want
 model choice or backup routing.

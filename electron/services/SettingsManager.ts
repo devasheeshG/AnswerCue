@@ -25,15 +25,6 @@ export interface AppSettings {
     knowledgeMode?: boolean;
     phoneMirrorEnabled?: boolean;
     phoneMirrorExposeOnLan?: boolean;
-    localWhisperModel?: string;
-    // Per-channel model overrides for local Whisper. When
-    // localWhisperPerChannelEnabled is true, the two LocalWhisperSTT instances
-    // pick their own model (mic / system) instead of sharing localWhisperModel.
-    // Use case: tiny model for the user's own voice (predictable, fast) + a
-    // larger one for system audio (varied accents / jargon).
-    localWhisperPerChannelEnabled?: boolean;
-    localWhisperModelMic?: string;
-    localWhisperModelSystem?: string;
     // Phase 6 — TelemetryService toggle. Defaults to true (local-only JSONL).
     // When false, no telemetry is written to disk and no sinks fire.
     telemetryEnabled?: boolean;

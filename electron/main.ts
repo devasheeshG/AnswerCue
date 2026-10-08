@@ -415,23 +415,12 @@ import { SystemAudioCapture } from "./audio/SystemAudioCapture"
 import { MicrophoneCapture } from "./audio/MicrophoneCapture"
 import { AudioDevices } from "./audio/AudioDevices"
 import { loadNativeModule } from "./audio/nativeModuleLoader"
-import { GoogleSTT } from "./audio/GoogleSTT"
-import { RestSTT } from "./audio/RestSTT"
-import { DeepgramStreamingSTT } from "./audio/DeepgramStreamingSTT"
-import { SonioxStreamingSTT } from "./audio/SonioxStreamingSTT"
-import { ElevenLabsStreamingSTT } from "./audio/ElevenLabsStreamingSTT"
-import { OpenAIStreamingSTT } from "./audio/OpenAIStreamingSTT"
-import { AnswerCueProSTT } from "./audio/AnswerCueProSTT"
+import { CloudTranscriptionSTT } from './audio/CloudTranscriptionSTT';
 import { ThemeManager } from "./ThemeManager"
 import { DatabaseManager } from "./db/DatabaseManager"
 import { warmupIntentClassifier } from "./llm"
 
-/** Unified type for all STT providers with optional extended capabilities */
-type STTProvider = (GoogleSTT | RestSTT | DeepgramStreamingSTT | SonioxStreamingSTT | ElevenLabsStreamingSTT | OpenAIStreamingSTT | AnswerCueProSTT) & {
-  finalize?: () => void;
-  setAudioChannelCount?: (count: number) => void;
-  notifySpeechEnded?: () => void;
-};
+type STTProvider = CloudTranscriptionSTT;
 
 type ScreenshotWindowMode = 'launcher' | 'overlay';
 
@@ -602,28 +591,6 @@ export class AppState {
     if (process.platform === 'win32' || process.platform === 'darwin') {
       this.cropperWindowHelper.preload();
     }
-
-    // Warm the local Moonshine worker in the background so the first recording
-    // session starts instantly instead of waiting for model load from disk.
-    setImmediate(() => {
-      try {
-        const { CredentialsManager } = require('./services/CredentialsManager');
-        if (CredentialsManager.getInstance().getSttProvider() === 'local-whisper') {
-          const { DEFAULT_LOCAL_TRANSCRIPTION_MODEL_ID, isModelCached } = require('./audio/whisper/modelManager');
-          const { modelPreloader } = require('./audio/whisper/modelPreloader');
-          const { resolveInferenceConfig } = require('./audio/whisper/inferenceConfig');
-          const modelId = DEFAULT_LOCAL_TRANSCRIPTION_MODEL_ID;
-          const { dtype } = resolveInferenceConfig();
-          if (isModelCached(modelId, dtype)) {
-            console.log(`[AppState] Preloading local Moonshine model: ${modelId}`);
-            modelPreloader.preload(modelId);
-          }
-        }
-      } catch (e) {
-        // Non-fatal — recording still works, just with a cold-start delay
-        console.warn('[AppState] Local Whisper preload skipped:', e);
-      }
-    });
 
     // Initialize KeybindManager
     const keybindManager = KeybindManager.getInstance();
@@ -1312,13 +1279,10 @@ export class AppState {
     const sttProvider = CredentialsManager.getInstance().getSttProvider();
     const sttLanguage = CredentialsManager.getInstance().getSttLanguage();
 
-    const { LocalWhisperSTT } = require('./audio/LocalWhisperSTT');
-    const { DEFAULT_LOCAL_TRANSCRIPTION_MODEL_ID } = require('./audio/whisper/modelManager');
-    console.log(`[Main] Using local Moonshine Base STT for ${speaker}, model: ${DEFAULT_LOCAL_TRANSCRIPTION_MODEL_ID}`);
-    const lws = new LocalWhisperSTT(DEFAULT_LOCAL_TRANSCRIPTION_MODEL_ID);
-    // Channel label disambiguates the two concurrent instances in latency logs.
-    lws.setChannel(speaker === 'interviewer' ? 'system' : 'mic');
-    const stt = lws as any;
+    const credentials = CredentialsManager.getInstance();
+    const key = sttProvider === 'openai' ? credentials.getOpenAiSttApiKey() : credentials.getElevenLabsApiKey();
+    if (!key) throw new Error('Configure a transcription provider in Settings → AI Providers');
+    const stt = new CloudTranscriptionSTT(key, credentials.getTranscriptionModel());
 
     stt.setRecognitionLanguage(sttLanguage);
 
@@ -1419,7 +1383,7 @@ export class AppState {
       }
 
       // Immediately fatal: auth/account problems — no amount of retrying helps
-      const isAuthError = httpStatus === 401
+      const isAuthError = (err as any).fatal || httpStatus === 401
         || err.message.toLowerCase().includes('auth_timeout')
         || err.message.toLowerCase().includes('invalid_key')
         || err.message.toLowerCase().includes('invalid api')
@@ -1493,45 +1457,11 @@ export class AppState {
         { provider: sttProvider, message: w?.message, droppedBytes: w?.droppedBytes });
     });
 
-    // Auto language detection: AnswerCueProSTT emits 'languageDetected' when the
-    // backend resolves the language from the first audio batch. Notify the renderer
-    // so the settings UI can show what was detected.
-    if (stt instanceof AnswerCueProSTT) {
-      stt.on('connected', () => {
-        _consecutiveErrors = 0;
-        if (_lastState !== 'connected') {
-          _lastState = 'awaiting-audio';
-          this.sendSttStatus({
-            state: 'awaiting-audio',
-            provider: sttProvider,
-            channel: speaker,
-          } as SttStatusPayload);
-        }
-      });
-
-      stt.on('languageDetected', (bcp47: string) => {
-        console.log(`[Main] STT language auto-detected (${speaker}): ${bcp47}`);
-        const helper = this.getWindowHelper();
-        helper.getMainWindow()?.webContents.send('stt-language-auto-detected', bcp47);
-        helper.getLauncherWindow()?.webContents.send('stt-language-auto-detected', bcp47);
-      });
-
-      // Persistent-reconnect signal: AnswerCueProSTT now retries indefinitely
-      // with a 30s backoff cap, but we want the user to know after ~5 attempts
-      // (~30–90s of dead transcript) that the issue is sustained, not a blip.
-      // Reuse the stt-status channel with state='reconnecting' and a higher
-      // attempts count so the renderer's existing banner picks it up.
-      stt.on('persistent-reconnect', (info: { attempts: number }) => {
-        console.warn(`[Main] STT persistent reconnect (${speaker}): ${info.attempts} consecutive attempts.`);
-        this.sendSttStatus( {
-          state: 'reconnecting',
-          provider: sttProvider,
-          error: `Reconnecting to transcription service — ${info.attempts} consecutive attempts. Check your network connection.`,
-          channel: speaker,
-          reconnectAttempts: info.attempts,
-        } as SttStatusPayload);
-      });
-    }
+    stt.on('connected', () => {
+      _consecutiveErrors = 0;
+      _lastState = 'awaiting-audio';
+      this.sendSttStatus({ state: 'awaiting-audio', provider: sttProvider, channel: speaker });
+    });
 
     // B2: Emit 'awaiting-audio' once the STT provider is wired up but before
     // any audio has flowed. Renderers that joined mid-session sync to this
@@ -2586,7 +2516,7 @@ export class AppState {
     // Broadcast the new STT config state to all windows so they can update banners / warnings
     const { CredentialsManager: CM } = require('./services/CredentialsManager');
     const newProvider = CM.getInstance().getSttProvider();
-    this.broadcast('stt-config-changed', { configured: newProvider !== 'none', provider: newProvider });
+    this.broadcast('stt-config-changed', { configured: CM.getInstance().isTranscriptionConfigured(), provider: newProvider });
   }
 
   /**
@@ -3662,9 +3592,11 @@ export class AppState {
           console.error('[Main] Failed to revert model:', e);
         }
 
-        // 1. Grace window for STT trailing finals (Google/Soniox/Deepgram all
-        //    reply to finalize() within 100–200ms). 250ms is conservative.
-        await new Promise(resolve => setTimeout(resolve, 250));
+        // 1. Await trailing cloud transcripts before persisting this capture session.
+        await Promise.all([
+          this.googleSTT?.drain?.(2000) || new Promise(resolve => setTimeout(resolve, 250)),
+          this.googleSTT_User?.drain?.(2000) || new Promise(resolve => setTimeout(resolve, 250)),
+        ]);
 
         // 2. Tear down STT sockets now that finals have arrived.
         this.googleSTT?.stop();
@@ -3966,13 +3898,6 @@ export class AppState {
     // Set global environment variable so new instances pick it up
     process.env.GOOGLE_APPLICATION_CREDENTIALS = keyPath;
 
-    if (this.googleSTT) {
-      this.googleSTT.setCredentials(keyPath);
-    }
-
-    if (this.googleSTT_User) {
-      this.googleSTT_User.setCredentials(keyPath);
-    }
   }
 
   public setRecognitionLanguage(key: string): void {
@@ -3982,7 +3907,7 @@ export class AppState {
 
     // 'auto' is only meaningful for AnswerCueProSTT — other providers fall back to en-US.
     const sttProvider = CredentialsManager.getInstance().getSttProvider();
-    const effectiveKey = (key === 'auto' && sttProvider !== 'natively') ? 'english-us' : key;
+    const effectiveKey = key;
 
     this.googleSTT?.setRecognitionLanguage(effectiveKey);
     this.googleSTT_User?.setRecognitionLanguage(effectiveKey);

@@ -2,6 +2,7 @@ import { SearchableSelect as ModelSelect } from '../ui/SearchableSelect';
 import { OPENAI_SERVICE_TIERS, type OpenAiServiceTier } from '../../../electron/llm/openAiServiceTier';
 import React, { useEffect, useMemo, useState } from 'react';
 import { STANDARD_CLOUD_MODELS, prettifyModelId } from '../../utils/modelUtils';
+import { TranscriptionProvidersSettings } from './TranscriptionProvidersSettings';
 import { ProviderCard } from './ProviderCard';
 
 type ProviderId = 'openai' | 'gemini' | 'claude';
@@ -264,7 +265,7 @@ export const AIProvidersSettings: React.FC = () => {
 
             <div className="space-y-5">
                 <div>
-                    <h3 className="text-sm font-bold text-text-primary mb-1">AI Providers</h3>
+                    <h3 className="text-sm font-bold text-text-primary mb-1">LLM providers</h3>
                     <p className="text-xs text-text-secondary mb-2">Add one or more provider keys. Only OpenAI, Google, and Anthropic are shown here.</p>
                 </div>
 
@@ -314,6 +315,8 @@ export const AIProvidersSettings: React.FC = () => {
                     ))}
                 </div>
             </div>
+
+            <TranscriptionProvidersSettings />
 
             <div className="space-y-4">
                 <div>

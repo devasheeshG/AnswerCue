@@ -47,7 +47,7 @@ If your operating system warns about an unsigned or newly signed build, make sur
 
 - **Interview-first flow:** prep chat, reusable docs, live interview transcript, AI answers, and post-interview follow-up all stay in one interview timeline.
 - **Bring your own provider key:** OpenAI, Google Gemini, and Anthropic Claude are supported from Settings.
-- **Local transcription path:** Moonshine Base runs locally after setup, so live transcription does not need a cloud speech provider.
+- **Cloud transcription:** Choose OpenAI GPT Live Transcribe or ElevenLabs Scribe v2 Realtime. Both microphone and meeting audio stream to your selected provider; no local speech model or model download is included.
 - **Reusable document context:** Markdown, TXT, PDF, and DOCX files are ingested into Markdown locally and can be attached across interviews.
 - **Persistent interview memory:** prep chat, selected docs, transcript, AI responses, and post-interview chat are saved so you can reopen an interview later.
 - **Light and dark UI:** the desktop app follows the AnswerCue visual system with both themes available.
@@ -59,6 +59,7 @@ In Settings → AI Providers → OpenAI, choose a default response tier. It save
 - **Auto:** follows your OpenAI project default.
 - **Standard:** normal processing.
 - **Fast (Priority):** faster processing for the selected supported model.
+
 Previously saved Ultrafast settings migrate to Fast (Priority), preserving the selected model. Priority availability and pricing depend on the model and your OpenAI account.
 
 Test Connection uses the saved tier. Other providers, transcription, and the separate Groq Fast Response toggle have their own settings.
@@ -69,7 +70,7 @@ AnswerCue is focused on interview workflows, not a generic meeting dashboard.
 
 - **Preflight setup:** first-run setup guides the user through provider keys and required permissions.
 - **Provider keys:** Settings supports OpenAI, Google Gemini, and Anthropic Claude. Fetch Models refreshes the saved model list for that provider. One searchable Active Model dropdown combines all configured providers; this default also controls interview answers.
-- **Local transcription:** speech transcription uses the local Moonshine Base model downloaded during setup. Users should not need to choose a speech provider.
+- **Transcription settings:** AI Providers contains separate LLM providers and Transcription providers sections. Save transcription keys, test session access, and select one active transcription model across configured providers. An existing OpenAI LLM key can be reused if no separate transcription key is saved.
 - **Prep chat:** before an interview starts, the user can chat with the assistant to build interview context.
 - **Document context:** users can upload Markdown, TXT, PDF, and DOCX files. Files are ingested locally into Markdown, saved for reuse, and can be attached per interview.
 - **Custom instructions:** Full typed instructions, the complete extracted text of one attached file, and the saved AI Persona are passed directly to the LLM. No embeddings or vector search are used. The character counter includes typed instructions and file text.

@@ -52,15 +52,15 @@ export const AboutSection: React.FC<AboutSectionProps> = () => {
                         icon={<Volume2 size={20} />}
                         color="text-blue-400"
                         bg="bg-blue-500/10"
-                        title="Local transcription"
-                        description="Audio setup is simplified around the Moonshine Base model downloaded during setup, with input and output device controls shown where users need them."
+                        title="Cloud transcription"
+                        description="Choose OpenAI GPT Live Transcribe or ElevenLabs Scribe v2 Realtime, with separate transcription keys and microphone/meeting audio controls."
                     />
                     <FeatureRow
                         icon={<Cpu size={20} />}
                         color="text-purple-400"
                         bg="bg-purple-500/10"
                         title="Focused model support"
-                        description="AI provider setup now centers on OpenAI, Google Gemini, and Anthropic, with Claude limited to supported Opus and Sonnet 4.6 models."
+                        description="AI provider setup now centers on OpenAI, Google Gemini, and Anthropic, with a searchable model list across configured providers."
                     />
                     <FeatureRow
                         icon={<DownloadCloud size={20} />}

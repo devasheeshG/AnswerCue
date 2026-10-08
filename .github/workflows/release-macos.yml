@@ -200,7 +200,6 @@ jobs:
             npm run build
             ANSWERCUE_PRODUCTION_BUILD=1 npm run build:electron
             ANSWERCUE_BUILD_ALL_MAC_ARCHES=1 npm run build:native
-            node scripts/download-models.js
             node scripts/ensure-sharp-mac-deps.js
             npx electron-builder --config electron-builder.signed.cjs --publish never
           else
@@ -208,7 +207,6 @@ jobs:
             npm run build
             ANSWERCUE_PRODUCTION_BUILD=1 npm run build:electron
             ANSWERCUE_BUILD_ALL_MAC_ARCHES=1 npm run build:native
-            node scripts/download-models.js
             node scripts/ensure-sharp-mac-deps.js
             env -u CSC_LINK -u CSC_KEY_PASSWORD CSC_IDENTITY_AUTO_DISCOVERY=false npx electron-builder --publish never
           fi

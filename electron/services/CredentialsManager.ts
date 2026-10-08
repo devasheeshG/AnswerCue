@@ -3,6 +3,7 @@
  * Uses Electron's safeStorage API for encryption at rest
  */
 
+import { getTranscriptionModel } from '../audio/transcriptionModels';
 import { app, safeStorage } from 'electron';
 import fs from 'fs';
 import path from 'path';
@@ -53,6 +54,7 @@ export interface StoredCredentials {
     curlProviders?: CurlProvider[];
     defaultModel?: string;
     nativelyApiKey?: string;
+    transcriptionModel?: string;
     // STT Provider settings
     sttProvider?: 'none' | 'google' | 'groq' | 'openai' | 'deepgram' | 'elevenlabs' | 'azure' | 'ibmwatson' | 'soniox' | 'natively' | 'local-whisper';
     groqSttApiKey?: string;
@@ -150,14 +152,28 @@ export class CredentialsManager {
         return this.credentials.customProviders || [];
     }
 
-    public getSttProvider(): 'none' | 'google' | 'groq' | 'openai' | 'deepgram' | 'elevenlabs' | 'azure' | 'ibmwatson' | 'soniox' | 'natively' | 'local-whisper' {
-        const provider = this.credentials.sttProvider || 'none';
-        if (provider !== 'local-whisper') {
-            this.credentials.sttProvider = 'local-whisper';
-            this.saveCredentials();
-            console.log(`[CredentialsManager] Forced STT provider ${provider}→local-whisper (Moonshine Base)`);
-        }
-        return 'local-whisper';
+    public getTranscriptionModel(): string {
+        if (getTranscriptionModel(this.credentials.transcriptionModel || '')) return this.credentials.transcriptionModel!;
+        if (this.credentials.sttProvider === 'elevenlabs' && this.getElevenLabsApiKey()) return 'scribe_v2_realtime';
+        if (this.getOpenAiSttApiKey()) return 'gpt-live-transcribe';
+        if (this.getElevenLabsApiKey()) return 'scribe_v2_realtime';
+        return 'gpt-live-transcribe';
+    }
+
+    public setTranscriptionModel(model: string): void {
+        const config = getTranscriptionModel(model);
+        if (!config) throw new Error('Unsupported real-time transcription model');
+        this.credentials.transcriptionModel = model;
+        this.credentials.sttProvider = config.provider;
+        this.saveCredentials();
+    }
+
+    public getSttProvider(): 'openai' | 'elevenlabs' {
+        return getTranscriptionModel(this.getTranscriptionModel())!.provider;
+    }
+
+    public isTranscriptionConfigured(): boolean {
+        return this.getSttProvider() === 'openai' ? !!this.getOpenAiSttApiKey() : !!this.getElevenLabsApiKey();
     }
 
     public getDeepgramApiKey(): string | undefined {
@@ -173,7 +189,7 @@ export class CredentialsManager {
     }
 
     public getOpenAiSttApiKey(): string | undefined {
-        return this.credentials.openAiSttApiKey;
+        return this.credentials.openAiSttApiKey || this.credentials.openaiApiKey;
     }
 
     public getOpenAiSttBaseUrl(): string | undefined {
@@ -384,9 +400,8 @@ export class CredentialsManager {
     }
 
     public setSttProvider(_provider: 'none' | 'google' | 'groq' | 'openai' | 'deepgram' | 'elevenlabs' | 'azure' | 'ibmwatson' | 'soniox' | 'natively' | 'local-whisper'): void {
-        this.credentials.sttProvider = 'local-whisper';
-        this.saveCredentials();
-        console.log('[CredentialsManager] STT Provider set to: local-whisper (Moonshine Base)');
+        if (_provider !== 'openai' && _provider !== 'elevenlabs') throw new Error('Choose OpenAI or ElevenLabs transcription');
+        this.setTranscriptionModel(_provider === 'openai' ? 'gpt-live-transcribe' : 'scribe_v2_realtime');
     }
 
     public setDeepgramApiKey(key: string): void {
@@ -501,21 +516,12 @@ export class CredentialsManager {
                 console.log('[CredentialsManager] Auto-set default model to natively');
             }
 
-            // STT is local-only: keep Moonshine Base selected regardless of API keys.
-            if (this.credentials.sttProvider !== 'local-whisper') {
-                this.credentials.sttProvider = 'local-whisper';
-                console.log('[CredentialsManager] Auto-set STT provider to local-whisper');
-            }
         } else {
             // Key cleared — revert natively-auto-set defaults back to the next configured provider.
             if (this.credentials.defaultModel === 'natively') {
                 const nextDefault = this.firstConfiguredDefaultModel() || FALLBACK_DEFAULT_MODEL;
                 this.credentials.defaultModel = nextDefault;
                 console.log(`[CredentialsManager] AnswerCue key cleared — reset default model to ${nextDefault}`);
-            }
-            if (this.credentials.sttProvider !== 'local-whisper') {
-                this.credentials.sttProvider = 'local-whisper';
-                console.log('[CredentialsManager] AnswerCue key cleared — kept local-whisper STT provider');
             }
         }
 

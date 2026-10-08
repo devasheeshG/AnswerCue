@@ -1,3 +1,4 @@
+import { TranscriptionProvidersSettings } from './settings/TranscriptionProvidersSettings';
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { ToggleLeft, ToggleRight, Search, ArrowRight, ArrowLeft, MoreHorizontal, Globe, Clock, ChevronRight, Settings, RefreshCw, Ghost, Plus, Mail, Link as LinkIcon, ChevronDown, Trash2, Bell, Check, Download, DownloadCloud, CheckCircle, AlertCircle, User, Sparkles, ArrowUpRight, ArrowUp, Brain, Mic, ShieldCheck, Paperclip, X, Speaker, Pencil, KeyRound, Monitor, HelpCircle, PanelLeft, PanelRight, Copy, MessageSquare, Play, AudioLines } from 'lucide-react';
 import { generateMeetingPDF } from '../utils/pdfGenerator';
@@ -68,23 +69,11 @@ interface LauncherProps {
 
 type PermissionValue = 'granted' | 'denied' | 'not-determined' | 'restricted' | 'unknown';
 type ReadinessStatus = 'ready' | 'warning' | 'missing';
-type PreflightStep = 'providers' | 'model' | 'permissions';
+type PreflightStep = 'providers' | 'transcription' | 'permissions';
 type ProviderKeyId = 'openai' | 'claude' | 'gemini';
 type ProviderKeyDrafts = Record<ProviderKeyId, string>;
 type ProviderKeyStatus = Record<ProviderKeyId, boolean>;
 type LauncherUpdateStatus = 'idle' | 'checking' | 'available' | 'downloading' | 'ready' | 'error';
-type LocalSttModelStatus = 'available' | 'missing' | 'downloading' | 'error';
-
-interface LocalSttModelState {
-    id: string;
-    name: string;
-    sizeMb: number;
-    status: LocalSttModelStatus;
-    progress: number;
-    loading: boolean;
-    error: string | null;
-}
-
 interface SessionReadiness {
     aiProvider: string;
     aiModel: string;
@@ -113,16 +102,6 @@ const INITIAL_READINESS: SessionReadiness = {
     screenPermission: 'unknown',
     accessibilityPermission: 'unknown',
     loading: true,
-};
-
-const INITIAL_LOCAL_STT_MODEL: LocalSttModelState = {
-    id: 'onnx-community/moonshine-base-ONNX',
-    name: 'Moonshine Base',
-    sizeMb: 280,
-    status: 'missing',
-    progress: 0,
-    loading: true,
-    error: null,
 };
 
 const AUDIO_DEVICES_CHANGED_EVENT = 'answercue-audio-devices-changed';
@@ -155,14 +134,13 @@ const sttProviderLabels: Record<string, string> = {
     none: 'Not selected',
     google: 'Google Speech',
     groq: 'Groq Whisper',
-    openai: 'OpenAI Whisper',
+    openai: 'OpenAI transcription',
     deepgram: 'Deepgram',
     elevenlabs: 'ElevenLabs',
     azure: 'Azure Speech',
     ibmwatson: 'IBM Watson',
     soniox: 'Soniox',
     natively: 'AnswerCue API',
-    'local-whisper': 'Moonshine Base',
 };
 
 const inferProviderLabel = (provider: string | undefined, model: string | undefined) => {
@@ -202,18 +180,17 @@ const hasAnyConfiguredAiProvider = (provider: string | undefined, creds: any) =>
 };
 
 const hasConfiguredStt = (creds: any) => {
-    const provider = creds?.sttProvider || 'local-whisper';
+    const provider = creds?.sttProvider || 'openai';
     switch (provider) {
         case 'google': return !!creds?.googleServiceAccountPath;
         case 'groq': return !!creds?.hasSttGroqKey;
-        case 'openai': return !!creds?.hasSttOpenaiKey;
+        case 'openai': return !!creds?.hasSttOpenaiKey || !!creds?.hasOpenaiKey;
         case 'deepgram': return !!creds?.hasDeepgramKey;
         case 'elevenlabs': return !!creds?.hasElevenLabsKey;
         case 'azure': return !!creds?.hasAzureKey && !!creds?.azureRegion;
         case 'ibmwatson': return !!creds?.hasIbmWatsonKey && !!creds?.ibmWatsonRegion;
         case 'soniox': return !!creds?.hasSonioxKey;
         case 'natively': return !!creds?.hasAnswerCueKey;
-        case 'local-whisper': return true;
         default: return false;
     }
 };
@@ -319,7 +296,7 @@ const ScreenshotPreviewDialog: React.FC<ScreenshotPreviewDialogProps> = ({ scree
 
 const isAssistantSpeaker = (speaker: string | undefined) => {
     const normalized = (speaker || '').toLowerCase();
-    return ['assistant', 'ai', 'model'].includes(normalized);
+    return ['assistant', 'ai', 'transcription'].includes(normalized);
 };
 
 const speakerRole = (speaker: string | undefined): TimelineRole => {
@@ -1970,8 +1947,6 @@ const Launcher: React.FC<LauncherProps> = ({ onStartMeeting, onOpenSettings, onP
     const [readiness, setReadiness] = useState<SessionReadiness>(INITIAL_READINESS);
     const [currentModel, setCurrentModel] = useState('natively');
     const [preflightStep, setPreflightStep] = useState<PreflightStep>('providers');
-    const [localSttModel, setLocalSttModel] = useState<LocalSttModelState>(INITIAL_LOCAL_STT_MODEL);
-    const [isDownloadingLocalSttModel, setIsDownloadingLocalSttModel] = useState(false);
     const [providerKeyDrafts, setProviderKeyDrafts] = useState<ProviderKeyDrafts>(EMPTY_PROVIDER_KEY_DRAFTS);
     const [providerKeyStatus, setProviderKeyStatus] = useState<ProviderKeyStatus>(EMPTY_PROVIDER_KEY_STATUS);
     const [providerKeyError, setProviderKeyError] = useState<string | null>(null);
@@ -2329,45 +2304,20 @@ const Launcher: React.FC<LauncherProps> = ({ onStartMeeting, onOpenSettings, onP
             credsResult,
             audioResult,
             permissionsResult,
-            localSttModelResult,
         ] = await Promise.allSettled([
             window.electronAPI.getCurrentLlmConfig?.(),
             window.electronAPI.getStoredCredentials?.(),
             window.electronAPI.getNativeAudioStatus?.(),
             window.electronAPI.checkPermissions?.(),
-            window.electronAPI.localWhisperGetModels?.(),
         ]);
 
         const llm = (llmResult.status === 'fulfilled' ? llmResult.value : null) as any;
         const creds = (credsResult.status === 'fulfilled' ? credsResult.value : null) as any;
         const audio = (audioResult.status === 'fulfilled' ? audioResult.value : null) as any;
         const permissions = (permissionsResult.status === 'fulfilled' ? permissionsResult.value : null) as any;
-        const localSttModels = (localSttModelResult.status === 'fulfilled' ? localSttModelResult.value : null) as any;
-        const sttProvider = creds?.sttProvider || 'local-whisper';
-        const downloadedLocalSttModel = Array.isArray(localSttModels?.models)
-            ? localSttModels.models.find((model: any) => model.id === localSttModels.activeModelId) || localSttModels.models[0]
-            : null;
-        const localModelStatus = (downloadedLocalSttModel?.status || 'missing') as LocalSttModelStatus;
-        const localModelReady = localModelStatus === 'available';
-        const sttReady = hasConfiguredStt(creds) && (sttProvider !== 'local-whisper' || localModelReady);
+        const sttProvider = creds?.sttProvider || 'openai';
+        const sttReady = hasConfiguredStt(creds);
         const model = llm?.model || 'answercue';
-        const localModelHint = localModelStatus === 'available'
-            ? 'Downloaded locally'
-            : localModelStatus === 'downloading'
-                ? 'Downloading'
-                : localModelStatus === 'error'
-                    ? downloadedLocalSttModel?.errorMessage || 'Download failed'
-                    : 'Download required';
-
-        setLocalSttModel(prev => ({
-            id: downloadedLocalSttModel?.id || prev.id,
-            name: downloadedLocalSttModel?.name || prev.name,
-            sizeMb: downloadedLocalSttModel?.sizeMb || prev.sizeMb,
-            status: isDownloadingLocalSttModel && localModelStatus !== 'available' ? 'downloading' : localModelStatus,
-            progress: localModelStatus === 'available' ? 100 : prev.progress,
-            loading: false,
-            error: localModelStatus === 'error' ? downloadedLocalSttModel?.errorMessage || 'Download failed' : null,
-        }));
 
         setCurrentModel(model);
         setProviderKeyStatus({
@@ -2382,103 +2332,13 @@ const Launcher: React.FC<LauncherProps> = ({ onStartMeeting, onOpenSettings, onP
             hasAnyProvider: hasAnyConfiguredAiProvider(llm?.provider, creds),
             sttProvider: sttProviderLabels[sttProvider] || sttProvider,
             sttReady,
-            sttHint: sttProvider === 'local-whisper' ? localModelHint : (sttReady ? 'Configured' : 'Unavailable'),
+            sttHint: sttReady ? 'Configured' : 'Add a transcription API key',
             audioReady: audio?.connected !== false,
             micPermission: (permissions?.microphone || 'unknown') as PermissionValue,
             screenPermission: (permissions?.screen || 'unknown') as PermissionValue,
             accessibilityPermission: (permissions?.accessibility || 'unknown') as PermissionValue,
             loading: false,
         });
-    };
-
-    useEffect(() => {
-        const unsubscribeProgress = window.electronAPI?.onLocalWhisperDownloadProgress?.((data: { modelId: string; progress: number }) => {
-            setIsDownloadingLocalSttModel(true);
-            setLocalSttModel(prev => ({
-                ...prev,
-                id: data.modelId || prev.id,
-                status: 'downloading',
-                progress: Math.max(prev.progress, Math.min(99, Math.round(data.progress || 0))),
-                loading: false,
-                error: null,
-            }));
-            setReadiness(prev => ({
-                ...prev,
-                sttReady: false,
-                sttHint: `Downloading ${Math.round(data.progress || 0)}%`,
-            }));
-        });
-        const unsubscribeComplete = window.electronAPI?.onLocalWhisperDownloadComplete?.((data: { modelId: string }) => {
-            setIsDownloadingLocalSttModel(false);
-            setLocalSttModel(prev => ({
-                ...prev,
-                id: data.modelId || prev.id,
-                status: 'available',
-                progress: 100,
-                loading: false,
-                error: null,
-            }));
-            void refreshReadiness();
-        });
-        const unsubscribeError = window.electronAPI?.onLocalWhisperDownloadError?.((data: { modelId: string; error: string }) => {
-            setIsDownloadingLocalSttModel(false);
-            setLocalSttModel(prev => ({
-                ...prev,
-                id: data.modelId || prev.id,
-                status: 'error',
-                progress: 0,
-                loading: false,
-                error: data.error || 'Download failed',
-            }));
-            setReadiness(prev => ({
-                ...prev,
-                sttReady: false,
-                sttHint: data.error || 'Download failed',
-            }));
-        });
-
-        return () => {
-            unsubscribeProgress?.();
-            unsubscribeComplete?.();
-            unsubscribeError?.();
-        };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, []);
-
-    const handleDownloadLocalSttModel = async () => {
-        if (!window.electronAPI || isDownloadingLocalSttModel) return;
-
-        setIsDownloadingLocalSttModel(true);
-        setLocalSttModel(prev => ({
-            ...prev,
-            status: 'downloading',
-            progress: 0,
-            loading: false,
-            error: null,
-        }));
-        setReadiness(prev => ({
-            ...prev,
-            sttReady: false,
-            sttHint: 'Downloading 0%',
-        }));
-
-        const result = await window.electronAPI.localWhisperStartDownload?.(localSttModel.id);
-        if (!result?.success && result?.error !== 'already-downloading') {
-            const error = result?.error || 'Download failed';
-            setIsDownloadingLocalSttModel(false);
-            setLocalSttModel(prev => ({
-                ...prev,
-                status: 'error',
-                progress: 0,
-                loading: false,
-                error,
-            }));
-            setReadiness(prev => ({
-                ...prev,
-                sttReady: false,
-                sttHint: error,
-            }));
-        }
     };
 
     const handleRefresh = async () => {
@@ -3017,7 +2877,7 @@ const Launcher: React.FC<LauncherProps> = ({ onStartMeeting, onOpenSettings, onP
         }
 
         if (!hasNewKey) {
-            setPreflightStep('model');
+            setPreflightStep('transcription');
             return;
         }
 
@@ -3077,7 +2937,7 @@ const Launcher: React.FC<LauncherProps> = ({ onStartMeeting, onOpenSettings, onP
 
             setProviderKeyDrafts(EMPTY_PROVIDER_KEY_DRAFTS);
             setProviderKeyStatus(nextStatus);
-            setPreflightStep('model');
+            setPreflightStep('transcription');
             await refreshReadiness();
         } catch (error) {
             setProviderKeyError(error instanceof Error ? error.message : 'Could not save provider keys.');
@@ -3499,10 +3359,10 @@ const Launcher: React.FC<LauncherProps> = ({ onStartMeeting, onOpenSettings, onP
     };
 
     const hasPreflightLlmKey = providerKeyStatus.openai || providerKeyStatus.claude || providerKeyStatus.gemini;
-    const preflightModelReady = readiness.sttReady;
+    const preflightTranscriptionReady = readiness.sttReady;
     const preflightPermissionsReady = readiness.micPermission === 'granted' &&
         readiness.screenPermission === 'granted';
-    const showPreflight = !hasPreflightLlmKey || !preflightModelReady || !preflightPermissionsReady;
+    const showPreflight = !hasPreflightLlmKey || !preflightTranscriptionReady || !preflightPermissionsReady;
     const permissionsReady = readiness.micPermission === 'granted' && readiness.screenPermission === 'granted';
     const captureReady = readiness.audioReady && permissionsReady;
     const readinessRows: Array<{
@@ -3578,8 +3438,8 @@ const Launcher: React.FC<LauncherProps> = ({ onStartMeeting, onOpenSettings, onP
         sttModelMissing
             ? {
                 key: 'speech-model',
-                label: 'Download local transcription model',
-                detail: readiness.sttHint || 'Moonshine Base is required for local transcription.',
+                label: 'Configure transcription provider',
+                detail: readiness.sttHint || 'Add an OpenAI or ElevenLabs key in AI Providers.',
                 tab: 'audio',
             }
             : null,
@@ -3625,14 +3485,14 @@ const Launcher: React.FC<LauncherProps> = ({ onStartMeeting, onOpenSettings, onP
             setPreflightStep('providers');
             return;
         }
-        if (!preflightModelReady) {
-            setPreflightStep('model');
+        if (!preflightTranscriptionReady) {
+            setPreflightStep('transcription');
             return;
         }
         if (!preflightPermissionsReady) {
             setPreflightStep('permissions');
         }
-    }, [hasPreflightLlmKey, preflightModelReady, preflightPermissionsReady, readiness.loading]);
+    }, [hasPreflightLlmKey, preflightTranscriptionReady, preflightPermissionsReady, readiness.loading]);
 
     const preflightProviderFields: Array<{
         id: ProviderKeyId;
@@ -3807,8 +3667,8 @@ const Launcher: React.FC<LauncherProps> = ({ onStartMeeting, onOpenSettings, onP
                                         1. Model keys
                                     </span>
                                     <ChevronRight size={14} />
-                                    <span className={`rounded-full px-3 py-1.5 ${preflightStep === 'model' ? 'bg-accent-secondary text-accent-primary' : preflightModelReady ? 'bg-emerald-500/12 text-emerald-400' : 'bg-bg-secondary text-text-tertiary'}`}>
-                                        2. Local model
+                                    <span className={`rounded-full px-3 py-1.5 ${preflightStep === 'transcription' ? 'bg-accent-secondary text-accent-primary' : preflightTranscriptionReady ? 'bg-emerald-500/12 text-emerald-400' : 'bg-bg-secondary text-text-tertiary'}`}>
+                                        2. Transcription
                                     </span>
                                     <ChevronRight size={14} />
                                     <span className={`rounded-full px-3 py-1.5 ${preflightStep === 'permissions' ? 'bg-accent-secondary text-accent-primary' : preflightPermissionsReady ? 'bg-emerald-500/12 text-emerald-400' : 'bg-bg-secondary text-text-tertiary'}`}>
@@ -3902,109 +3762,12 @@ const Launcher: React.FC<LauncherProps> = ({ onStartMeeting, onOpenSettings, onP
                                                 </div>
                                             </div>
                                         </div>
-                                    ) : preflightStep === 'model' ? (
-                                        <div className="grid min-h-[520px] grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] max-lg:grid-cols-1">
-                                            <div className={`p-8 flex flex-col justify-between border-r max-lg:border-r-0 max-lg:border-b ${isLight ? 'border-border-muted bg-bg-secondary/60' : 'border-border-subtle bg-bg-secondary/40'}`}>
-                                                <div>
-                                                    <div className="h-12 w-12 rounded-xl bg-accent-secondary text-accent-primary flex items-center justify-center mb-6">
-                                                        <DownloadCloud size={24} />
-                                                    </div>
-                                                    <h1 className="text-[28px] leading-tight font-semibold text-text-primary">Download local transcription</h1>
-                                                    <p className="mt-3 text-[15px] leading-relaxed text-text-secondary">
-                                                        AnswerCue transcribes interviews on this computer. Download Moonshine once and it stays cached across app updates.
-                                                    </p>
-                                                </div>
-                                                <p className="text-[12px] leading-relaxed text-text-tertiary">
-                                                    The live interview runtime stays local-only. Network access is used only for this explicit download.
-                                                </p>
-                                            </div>
-
-                                            <div className="p-8 flex flex-col justify-center gap-4">
-                                                <div className={`rounded-lg border p-5 ${preflightModelReady ? 'border-emerald-500/25 bg-emerald-500/8' : localSttModel.status === 'error' ? 'border-red-500/25 bg-red-500/8' : isLight ? 'bg-bg-secondary/70 border-border-muted' : 'bg-bg-secondary border-border-subtle'}`}>
-                                                    <div className="flex items-start gap-4">
-                                                        <div className={`h-11 w-11 rounded-lg flex items-center justify-center shrink-0 ${preflightModelReady ? 'bg-emerald-500/15 text-emerald-400' : localSttModel.status === 'error' ? 'bg-red-500/15 text-red-300' : 'bg-accent-secondary text-accent-primary'}`}>
-                                                            {preflightModelReady ? <Check size={21} /> : localSttModel.status === 'error' ? <AlertCircle size={21} /> : <Mic size={21} />}
-                                                        </div>
-                                                        <div className="min-w-0 flex-1">
-                                                            <div className="flex flex-wrap items-center gap-2">
-                                                                <h3 className="text-[16px] font-semibold text-text-primary">{localSttModel.name}</h3>
-                                                                <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${preflightModelReady ? 'bg-emerald-500/12 text-emerald-400' : localSttModel.status === 'error' ? 'bg-red-500/12 text-red-300' : 'bg-amber-500/12 text-amber-400'}`}>
-                                                                    {preflightModelReady ? 'Downloaded' : localSttModel.status === 'downloading' ? `Downloading ${localSttModel.progress}%` : localSttModel.status === 'error' ? 'Failed' : 'Required'}
-                                                                </span>
-                                                            </div>
-                                                            <p className="mt-1 text-[12px] leading-relaxed text-text-secondary">
-                                                                About {localSttModel.sizeMb} MB. Used for microphone and meeting audio transcription.
-                                                            </p>
-
-                                                            {(localSttModel.status === 'downloading' || isDownloadingLocalSttModel) && (
-                                                                <div className="mt-4">
-                                                                    <div className="h-2 overflow-hidden rounded-full bg-bg-input">
-                                                                        <div
-                                                                            className="h-full rounded-full bg-accent-primary transition-all duration-300"
-                                                                            style={{ width: `${Math.max(2, Math.min(100, localSttModel.progress))}%` }}
-                                                                        />
-                                                                    </div>
-                                                                    <p className="mt-2 text-[11px] text-text-tertiary">Keep AnswerCue open until the download finishes.</p>
-                                                                </div>
-                                                            )}
-
-                                                            {localSttModel.error && (
-                                                                <div className="mt-4 rounded-md border border-red-500/25 bg-red-500/10 px-3 py-2 text-[12px] text-red-300">
-                                                                    {localSttModel.error}
-                                                                </div>
-                                                            )}
-                                                        </div>
-                                                    </div>
-                                                </div>
-
-                                                <div className="flex justify-between items-center pt-2 gap-3">
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => setPreflightStep('providers')}
-                                                        className="text-[12px] font-medium text-text-tertiary hover:text-text-primary transition-colors"
-                                                    >
-                                                        Back to keys
-                                                    </button>
-                                                    <div className="flex items-center gap-2">
-                                                        <button
-                                                            type="button"
-                                                            onClick={refreshReadiness}
-                                                            className="h-10 rounded-md px-3 text-[13px] font-semibold text-text-secondary hover:text-text-primary transition-colors inline-flex items-center gap-2"
-                                                        >
-                                                            <RefreshCw size={14} className={readiness.loading || localSttModel.loading ? 'animate-spin' : ''} />
-                                                            Refresh
-                                                        </button>
-                                                        {preflightModelReady ? (
-                                                            <button
-                                                                type="button"
-                                                                onClick={() => setPreflightStep('permissions')}
-                                                                className="h-10 rounded-md bg-accent-primary px-4 text-[13px] font-semibold text-white inline-flex items-center gap-2 hover:opacity-90 transition-colors"
-                                                            >
-                                                                Continue
-                                                                <ArrowRight size={14} />
-                                                            </button>
-                                                        ) : (
-                                                            <button
-                                                                type="button"
-                                                                onClick={handleDownloadLocalSttModel}
-                                                                disabled={isDownloadingLocalSttModel || localSttModel.status === 'downloading'}
-                                                                className="h-10 rounded-md bg-accent-primary px-4 text-[13px] font-semibold text-white inline-flex items-center gap-2 hover:opacity-90 disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
-                                                            >
-                                                                {isDownloadingLocalSttModel || localSttModel.status === 'downloading' ? (
-                                                                    <>
-                                                                        <RefreshCw size={14} className="animate-spin" />
-                                                                        Downloading
-                                                                    </>
-                                                                ) : (
-                                                                    <>
-                                                                        <Download size={14} />
-                                                                        Download model
-                                                                    </>
-                                                                )}
-                                                            </button>
-                                                        )}
-                                                    </div>
-                                                </div>
+                                    ) : preflightStep === 'transcription' ? (
+                                        <div className="p-8 space-y-6">
+                                            <TranscriptionProvidersSettings />
+                                            <div className="flex items-center justify-between gap-3">
+                                                <button type="button" onClick={() => setPreflightStep('providers')} className="text-xs text-text-secondary">Back to LLM keys</button>
+                                                <button type="button" disabled={!preflightTranscriptionReady} onClick={() => setPreflightStep('permissions')} className="rounded-lg bg-accent-primary px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">Continue</button>
                                             </div>
                                         </div>
                                     ) : (
@@ -4065,10 +3828,10 @@ const Launcher: React.FC<LauncherProps> = ({ onStartMeeting, onOpenSettings, onP
                                                 <div className="flex justify-between items-center pt-3 gap-3">
                                                     <button
                                                         type="button"
-                                                        onClick={() => setPreflightStep('model')}
+                                                        onClick={() => setPreflightStep('transcription')}
                                                         className="text-[12px] font-medium text-text-tertiary hover:text-text-primary transition-colors"
                                                     >
-                                                        Back to model
+                                                        Back to transcription
                                                     </button>
                                                     <button
                                                         type="button"
