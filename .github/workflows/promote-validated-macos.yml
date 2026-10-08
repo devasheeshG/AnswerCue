@@ -1,0 +1,50 @@
+name: Publish validated macOS candidate
+on:
+  workflow_dispatch:
+    inputs:
+      candidate_run:
+        type: string
+        required: true
+      release_tag:
+        type: string
+        required: true
+permissions:
+  contents: write
+  actions: read
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate source and candidate checks
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CANDIDATE_RUN: ${{ inputs.candidate_run }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+        run: |
+          set -euo pipefail
+          [[ "$CANDIDATE_RUN" =~ ^[0-9]+$ ]]
+          [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          git fetch origin "refs/tags/$RELEASE_TAG:refs/tags/$RELEASE_TAG"
+          SHA=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$CANDIDATE_RUN" --jq .head_sha)
+          CONCLUSION=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$CANDIDATE_RUN" --jq .conclusion)
+          [ "$CONCLUSION" = success ]
+          [ "$SHA" = "$(git rev-parse "$RELEASE_TAG^{commit}")" ]
+          [ "$(gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --json isDraft --jq .isDraft)" = true ]
+      - uses: actions/download-artifact@v4
+        with:
+          name: answercue-macos
+          path: candidate-assets
+          run-id: ${{ inputs.candidate_run }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Upload immutable validated assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+        run: |
+          set -euo pipefail
+          VERSION=${RELEASE_TAG#v}
+          for FILE in "AnswerCue-$VERSION-arm64.dmg" "AnswerCue-$VERSION-x64.dmg" "AnswerCue-$VERSION-arm64-mac.zip" "AnswerCue-$VERSION-mac.zip" latest-mac.yml; do
+            test -s "candidate-assets/$FILE"
+          done
+          gh release upload "$RELEASE_TAG" candidate-assets/* --repo "$GITHUB_REPOSITORY"

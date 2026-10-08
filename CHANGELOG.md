@@ -1,10 +1,10 @@
 # Changelog
 
-## [2.8.9] - 2026-10-08
+## [2.8.10] - 2026-10-08
 
 ### Summary
 
-AnswerCue v2.8.9 updates the desktop runtime and stabilizes macOS application/helper identities to reduce Dock registration churn. It addresses the reported disappearing duplicate icons while retaining the lean package, cloud transcription, and persistent interview features.
+AnswerCue v2.8.10 updates the desktop runtime and stabilizes macOS application/helper identities to reduce Dock registration churn. It addresses the reported disappearing duplicate icons while retaining the lean package, cloud transcription, and persistent interview features.
 
 ### What's New
 
@@ -20,13 +20,14 @@ AnswerCue v2.8.9 updates the desktop runtime and stabilizes macOS application/he
 
 ### Fixes
 
+- Updates native rebuild/ABI tooling and the SQLite addon for Electron 44’s V8 API. Removes the deprecated duplicate electron-rebuild package. Database storage paths and schema are retained.
 - Removed repeated Mac application-name and default-icon updates during startup.
 - Removes the inherited CFBundleName override before creating the normal app windows and helpers.
 - Adds regression checks for stable Mac identity and idempotent disguise/icon behavior.
 
 ### Technical
 
-- Bumped package version to `2.8.9`; source and release notes are public in this fork.
+- Bumped package version to `2.8.10`; source and release notes are public in this fork.
 - The user's diagnostic showed one foreground AnswerCue process and one accessory plugin helper. The extra icons disappeared when clicked. This rules out three registered foreground instances and points to stale Dock registrations, but does not prove which operation originally created them.
 - The original v2.8.8 launch/reopen tests showed one Dock entry on clean macOS 14, 26, and 27 runners. The debugger-based visibility test was inconclusive; this release adds an isolated packaged native visibility harness.
 - Full automated suite: **1,057 passed, zero failed, 41 skipped**. Renderer/production builds, packaged database/keytar/audio loading, image conversion, PDF/DOCX/TXT imports, per-architecture inventory, signatures, DMGs, and updater ZIP checks remain release requirements.
@@ -34,7 +35,13 @@ AnswerCue v2.8.9 updates the desktop runtime and stabilizes macOS application/he
 - Clean-runner validation cannot guarantee repair of a Dock cache already corrupted on another Mac. Existing ghost entries may need a one-time `killall Dock` after replacing and quitting the old app. This update avoids the unnecessary identity mutations that can contribute to future registration inconsistencies.
 - User settings, keys, custom instructions, Persona, and interview history use the existing storage paths. No global Dock preferences or other applications' history are changed by the app.
 
-See [.github/releases/v2.8.9.md](.github/releases/v2.8.9.md) for downloads and installation notes.
+See [.github/releases/v2.8.10.md](.github/releases/v2.8.10.md) for downloads and installation notes.
+
+## [2.8.9] - 2026-10-08
+
+### Summary
+
+Unpublished candidate. Native rebuild tooling did not support Electron 44. Upload was blocked; the compatible build is v2.8.10.
 
 ## [2.8.8] - 2026-10-08
 
