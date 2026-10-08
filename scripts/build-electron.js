@@ -53,7 +53,9 @@ build({
   target: 'node20',
   format: 'cjs',          // Electron loads package.json main as CommonJS in this repo
                           // (package.json has no "type": "module").
-  external: ['electron', 'better-sqlite3', 'keytar'],
+  external: ['electron', 'better-sqlite3', 'keytar', ...(production ? ['sharp', 'pdf-parse'] : [])],
+  minify: production,
+  metafile: production,
   sourcemap: !production,
   jsx: 'automatic',
   loader: {
@@ -61,7 +63,13 @@ build({
     '.js': 'js',
   },
   logLevel: 'warning',
-}).then(() => {
+}).then((result) => {
+  if (production) {
+    const metaPath = path.join(rootDir, 'temp/electron-build-meta.json');
+    fs.mkdirSync(path.dirname(metaPath), { recursive: true });
+    fs.writeFileSync(metaPath, JSON.stringify(result.metafile, null, 2));
+    require('./third-party-notices.cjs').writeNotices(Object.keys(result.metafile.inputs).map(file => path.join(rootDir, file)), path.join(outDir, 'THIRD_PARTY_NOTICES.txt'));
+  }
   const pdfWorkerSource = path.join(rootDir, 'node_modules/pdf-parse/dist/pdf-parse/cjs/pdf.worker.mjs');
   const pdfWorkerTarget = path.join(outDir, 'electron/pdf.worker.mjs');
   if (fs.existsSync(pdfWorkerSource)) {

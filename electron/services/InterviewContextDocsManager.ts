@@ -34,6 +34,7 @@ function configurePdfWorker(PDFParse: any): void {
   if (pdfWorkerConfigured || typeof PDFParse?.setWorker !== 'function') return;
 
   const workerCandidates = [
+    path.join(__dirname, 'pdf.worker.mjs').replace('app.asar', 'app.asar.unpacked'),
     path.join(__dirname, 'pdf.worker.mjs'),
     path.join(process.cwd(), 'node_modules/pdf-parse/dist/pdf-parse/cjs/pdf.worker.mjs'),
   ];

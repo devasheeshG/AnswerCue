@@ -1,5 +1,44 @@
 # Changelog
 
+## [2.8.7] - 2026-10-08
+
+### Summary
+
+AnswerCue v2.8.7 reduces Mac package size by removing unused libraries, shipping compiled frontend/backend code without duplicate SDK copies, and selecting native libraries for the target architecture. It retains the cloud transcription and interview features from v2.8.6.
+
+### What's New
+
+- **Packaged runtime verification:** Mac CI starts the built app in an isolated diagnostic mode and checks the native database, key storage module, audio addon, image conversion, PDF/DOCX/TXT imports, and transcription module loading without recording audio or calling provider APIs.
+- **Package inventory checks:** CI rejects missing runtime files, development libraries, source maps, and native modules belonging to the other Mac architecture, and reports the largest packaged components.
+
+### Improvements
+
+- Frontend libraries and bundled JavaScript SDKs remain available for development and compilation but no longer ship as duplicate node_modules packages.
+- Keeps only native/asset-backed runtime libraries and dynamic validation/authentication helpers in production dependencies.
+- Removed unused ElevenLabs browser client, Google Stitch, Tavily, sqlite3, liquid-glass-react, three, tap, screenshot-desktop, unused styling/code-block utilities, and obsolete type packages. Legacy OCR remains development-only for its existing tests.
+- Production Electron code is minified. Developer builds keep their existing layout and source maps for tests and debugging.
+- Native audio, Sharp/libvips, and PDF canvas libraries are selected per Mac architecture. Both architectures are prepared during CI; each app ships only its matching files.
+- Packaging includes runtime icons rather than the full source/readme artwork directory, and excludes unused PDF browser/ESM builds and dependency source maps.
+- Compiled code retains generated third-party notices and the project license. The license for locally adapted glass-effect code is retained after removing its npm package.
+
+### Fixes
+
+- PDF imports prefer the unpacked worker file so Node can load it from a real filesystem path.
+- Ensures both Mac canvas variants are installed during cross-architecture builds, alongside Sharp's native image libraries.
+- Local release commands use the same production Electron bundling mode as CI.
+
+### Technical
+
+- Bumped package version to `2.8.7`. Source and detailed release notes are published in this fork.
+- Full automated suite: **1,055 passed, zero failed, 41 skipped**. Renderer type checking and production builds pass. Electron type checking retains the unchanged fork's 37 diagnostics, with no new diagnostics.
+- File-selection tests exercise electron-builder's actual filters for both Mac architectures, including native library retention and rejection of other architectures.
+- Mac release CI must pass packaged runtime probes, dependency inventories, signature checks, mounted DMG verification, and extracted updater ZIP checks before release assets are published. Intel runtime execution requires Rosetta on the build runner; CI explicitly reports a skip if unavailable.
+- Electron's Chromium/Node runtime, native audio, database, key storage, image libraries, and PDF parsing remain required. No local AI model is included or downloaded.
+- Existing provider keys, custom instructions, Persona, and interview history use the same storage paths. No user data or old model cache is deleted.
+- Live transcription with user API keys, microphone/system audio capture, macOS permissions, and Dock behavior still require installed-Mac checks. Packaging probes do not record audio, read keys, or make paid API requests.
+
+See [.github/releases/v2.8.7.md](.github/releases/v2.8.7.md) for downloads and installation notes.
+
 ## [2.8.6] - 2026-10-08
 
 ### Summary

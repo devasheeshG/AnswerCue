@@ -7,6 +7,8 @@ const path = require('path');
 const rootDir = path.resolve(__dirname, '..');
 const lockfile = JSON.parse(fs.readFileSync(path.join(rootDir, 'package-lock.json'), 'utf8'));
 const sharpOptionalDeps = lockfile.packages?.['node_modules/sharp']?.optionalDependencies;
+const canvasOptionalDeps = lockfile.packages?.['node_modules/@napi-rs/canvas']?.optionalDependencies;
+const nativeVersions = { ...sharpOptionalDeps, ...canvasOptionalDeps };
 
 if (process.platform !== 'darwin') {
   console.log('[ensure-sharp-mac-deps] Skipping; macOS packages are only needed on darwin builds.');
@@ -23,6 +25,8 @@ const requiredPackages = [
   '@img/sharp-libvips-darwin-arm64',
   '@img/sharp-darwin-x64',
   '@img/sharp-libvips-darwin-x64',
+  '@napi-rs/canvas-darwin-arm64',
+  '@napi-rs/canvas-darwin-x64',
 ];
 
 function packageDir(packageName) {
@@ -34,7 +38,7 @@ function isInstalled(packageName) {
 }
 
 function installPackage(packageName) {
-  const version = sharpOptionalDeps[packageName];
+  const version = nativeVersions[packageName];
   if (!version) {
     throw new Error(`Missing ${packageName} in sharp optionalDependencies.`);
   }
@@ -62,7 +66,7 @@ function installPackage(packageName) {
 const missingPackages = requiredPackages.filter((packageName) => !isInstalled(packageName));
 
 if (missingPackages.length === 0) {
-  console.log('[ensure-sharp-mac-deps] sharp packages for darwin arm64 and x64 are installed.');
+  console.log('[ensure-sharp-mac-deps] sharp and canvas packages for darwin arm64 and x64 are installed.');
   process.exit(0);
 }
 
@@ -74,4 +78,4 @@ if (stillMissing.length > 0) {
   throw new Error(`Failed to install sharp packages: ${stillMissing.join(', ')}`);
 }
 
-console.log('[ensure-sharp-mac-deps] sharp packages for darwin arm64 and x64 are installed.');
+console.log('[ensure-sharp-mac-deps] sharp and canvas packages for darwin arm64 and x64 are installed.');

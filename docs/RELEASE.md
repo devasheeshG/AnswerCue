@@ -62,6 +62,10 @@ The macOS workflow sets `ANSWERCUE_PRODUCTION_BUILD=1` when building Electron. T
 
 MiniLM embeddings, MobileBERT classification weights, vector-search modules, and sqlite-vec were removed in v2.8.5. v2.8.6 also removes local speech models, the speech worker, model downloads, Hugging Face Transformers, and ONNX Runtime. Transcription uses OpenAI or ElevenLabs WebSocket sessions.
 
+The v2.8.7 packaging rules keep browser libraries and statically bundled SDKs out of production node_modules. Runtime dependencies contain only native/asset-backed libraries and dynamic validation/authentication helpers. Package file filters select the target Mac architecture and retain native image/canvas assets. `scripts/verify-package-layout.cjs` checks the built ASAR inventory and reports sizes.
+
+CI also launches the built app with `ANSWERCUE_PACKAGE_SMOKE_DIR` pointing to a new temporary directory. This diagnostic exits after testing native database/keytar/audio loading, image conversion, document imports, and transcription module loading. It creates no windows, captures no audio, and reads no provider keys. Run it only with an isolated temporary directory. A failed probe blocks release publication.
+
 ## macOS Artifacts
 
 - Apple Silicon: `AnswerCue-X.Y.Z-arm64.dmg` and `AnswerCue-X.Y.Z-arm64-mac.zip`.

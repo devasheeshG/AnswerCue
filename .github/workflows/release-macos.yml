@@ -211,6 +211,20 @@ jobs:
             env -u CSC_LINK -u CSC_KEY_PASSWORD CSC_IDENTITY_AUTO_DISCOVERY=false npx electron-builder --publish never
           fi
 
+      - name: Verify packaged runtime and dependency inventory
+        run: |
+          set -euo pipefail
+          for ARCH in arm64 x64; do
+            if [ "$ARCH" = arm64 ]; then APP="release/mac-arm64/AnswerCue.app"; else APP="release/mac/AnswerCue.app"; fi
+            node scripts/verify-package-layout.cjs "$APP/Contents/Resources/app.asar" "$ARCH"
+            PROBE_DIR=$(mktemp -d "$RUNNER_TEMP/answercue-runtime-$ARCH.XXXXXX")
+            if [ "$ARCH" = x64 ] && ! /usr/bin/arch -x86_64 /usr/bin/true; then
+              echo "::warning::Rosetta unavailable; x64 runtime launch skipped. Package inventory remains verified."
+              continue
+            fi
+            ANSWERCUE_PACKAGE_SMOKE_DIR="$PROBE_DIR" "$APP/Contents/MacOS/AnswerCue"
+          done
+
       - name: Verify signature + notarization (both arches + DMGs)
         if: env.MACOS_SIGNING_AVAILABLE == 'true' && env.MACOS_NOTARIZATION_AVAILABLE == 'true'
         run: |

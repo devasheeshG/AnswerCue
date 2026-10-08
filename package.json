@@ -1,6 +1,6 @@
 {
   "name": "answercue",
-  "version": "2.8.6",
+  "version": "2.8.7",
   "main": "dist-electron/electron/main.js",
   "description": "AnswerCue is a live interview assistant that helps prepare context, transcribe conversations, and generate AI-guided answers.",
   "scripts": {
@@ -16,8 +16,8 @@
     "electron:dev": "npm run build:electron && cross-env NODE_ENV=development electron .",
     "electron:build": "npm run build:electron && cross-env NODE_ENV=production electron .",
     "app:dev": "concurrently \"npm run dev -- --port 5180 --strictPort\" \"wait-on http://localhost:5180 && npm run electron:dev\"",
-    "app:build": "npm run build && npm run build:electron && cross-env ANSWERCUE_BUILD_ALL_MAC_ARCHES=1 npm run build:native && node scripts/ensure-sharp-mac-deps.js && electron-builder",
-    "app:build:signed": "npm run build && npm run build:electron && cross-env ANSWERCUE_BUILD_ALL_MAC_ARCHES=1 npm run build:native && node scripts/ensure-sharp-mac-deps.js && electron-builder --config electron-builder.signed.cjs",
+    "app:build": "npm run build && cross-env ANSWERCUE_PRODUCTION_BUILD=1 npm run build:electron && cross-env ANSWERCUE_BUILD_ALL_MAC_ARCHES=1 npm run build:native && node scripts/ensure-sharp-mac-deps.js && electron-builder",
+    "app:build:signed": "npm run build && cross-env ANSWERCUE_PRODUCTION_BUILD=1 npm run build:electron && cross-env ANSWERCUE_BUILD_ALL_MAC_ARCHES=1 npm run build:native && node scripts/ensure-sharp-mac-deps.js && electron-builder --config electron-builder.signed.cjs",
     "watch": "tsc -p electron/tsconfig.json --watch",
     "start": "npm run app:dev",
     "dist": "npm run app:build",
@@ -41,18 +41,22 @@
     "afterPack": "./scripts/ad-hoc-sign.js",
     "productName": "AnswerCue",
     "files": [
-      "dist",
-      "dist-electron",
-      "native-module",
+      "dist/**",
+      "dist-electron/**",
+      "native-module/index.js",
+      "native-module/package.json",
+      "native-module/index.${platform}-${arch}{,-gnu,-msvc}.node",
       "package.json",
-      "node_modules",
-      "!**/native-module/target",
-      "!**/native-module/src",
-      "!**/native-module/.cargo"
+      "LICENSE",
+      "LICENSES/**",
+      "!**/node_modules/**/*.map",
+      "!**/node_modules/pdf-parse/dist/**/{esm,web}{,/**}",
+      "!**/node_modules/pdfjs-dist/web{,/**}"
     ],
     "asarUnpack": [
       "**/*.node",
-      "**/*.dylib"
+      "**/*.dylib",
+      "dist-electron/electron/pdf.worker.mjs"
     ],
     "directories": {
       "output": "release",
@@ -61,7 +65,14 @@
     "extraResources": [
       {
         "from": "assets/",
-        "to": "assets/"
+        "to": "assets/",
+        "filter": [
+          "icon.png",
+          "iconTemplate.png",
+          "answercue/answercue.icns",
+          "fakeicon/${os}/**",
+          "icons/${os}/**"
+        ]
       },
       {
         "from": "assets/answercue/answercue.icns",
@@ -86,7 +97,11 @@
         "NSScreenCaptureUsageDescription": "AnswerCue needs Screen Recording permission to capture system audio for interview transcription.",
         "NSMicrophoneUsageDescription": "AnswerCue needs microphone access to transcribe your voice during interviews.",
         "NSAudioCaptureUsageDescription": "AnswerCue needs system audio access to transcribe interview audio."
-      }
+      },
+      "files": [
+        "!**/node_modules/@img/!(colour|sharp-darwin-${arch}|sharp-libvips-darwin-${arch}){,/**}",
+        "!**/node_modules/@napi-rs/canvas-!(darwin-${arch}){,/**}"
+      ]
     },
     "dmg": {
       "size": "4g",
@@ -156,13 +171,11 @@
     "@playwright/test": "^1.59.1",
     "@types/better-sqlite3": "^7.6.13",
     "@types/color": "^4.2.0",
-    "@types/diff": "^6.0.0",
     "@types/electron": "^1.4.38",
     "@types/node": "^22.9.0",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "@types/react-syntax-highlighter": "^15.5.13",
-    "@types/screenshot-desktop": "^1.12.3",
     "@types/uuid": "^9.0.8",
     "@types/ws": "^8.18.1",
     "@typescript-eslint/eslint-plugin": "^8.14.0",
@@ -186,27 +199,15 @@
     "vite-plugin-electron-renderer": "^0.14.6",
     "wait-on": "^8.0.1",
     "@google-cloud/speech": "^7.2.1",
-    "@deepgram/sdk": "^3.13.0"
-  },
-  "dependencies": {
+    "@deepgram/sdk": "^3.13.0",
     "@anthropic-ai/sdk": "^0.74.0",
     "@bany/curl-to-json": "^1.2.10",
-    "@elevenlabs/client": "^0.15.1",
     "@google/genai": "^1.44.0",
-    "@google/stitch-sdk": "^0.0.3",
     "@radix-ui/react-dialog": "^1.1.2",
     "@radix-ui/react-toast": "^1.2.2",
     "@tanstack/react-query": "^5.100.10",
-    "@tavily/core": "^0.7.2",
-    "@types/keytar": "^4.4.0",
-    "@types/marked": "^5.0.2",
     "@types/qrcode": "^1.5.6",
-    "@types/three": "^0.182.0",
     "axios": "^1.7.7",
-    "better-sqlite3": "12.6.2",
-    "class-variance-authority": "^0.7.0",
-    "clsx": "^2.1.1",
-    "diff": "^7.0.0",
     "electron-store": "^8.1.0",
     "electron-updater": "^6.7.3",
     "form-data": "^4.0.1",
@@ -214,16 +215,12 @@
     "groq-sdk": "^0.37.0",
     "jspdf": "^4.0.0",
     "katex": "^0.16.27",
-    "keytar": "^7.9.0",
-    "liquid-glass-react": "^1.1.1",
     "lucide-react": "^0.460.0",
     "mammoth": "^1.11.0",
     "marked": "^18.0.4",
     "openai": "^6.22.0",
-    "pdf-parse": "^2.4.5",
     "qrcode": "^1.5.4",
     "react": "^19.2.6",
-    "react-code-blocks": "^0.1.6",
     "react-dom": "^19.2.6",
     "react-icons": "^5.3.0",
     "react-markdown": "^10.1.0",
@@ -231,15 +228,18 @@
     "rehype-katex": "^7.0.1",
     "remark-gfm": "^4.0.1",
     "remark-math": "^6.0.0",
-    "screenshot-desktop": "^1.15.0",
-    "sharp": "^0.34.5",
-    "sqlite3": "^5.1.7",
-    "tailwind-merge": "^2.5.4",
-    "tap": "^21.5.0",
     "tesseract.js": "^5.0.5",
-    "three": "^0.182.0",
     "tree-kill": "^1.2.2",
     "uuid": "^11.0.3",
     "ws": "^8.19.0"
+  },
+  "dependencies": {
+    "better-sqlite3": "12.6.2",
+    "keytar": "^7.9.0",
+    "pdf-parse": "^2.4.5",
+    "sharp": "^0.34.5",
+    "ajv": "^8.20.0",
+    "ajv-formats": "^3.0.1",
+    "google-auth-library": "^10.6.2"
   }
 }

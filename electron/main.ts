@@ -4730,6 +4730,15 @@ async function initializeApp() {
 
   // 2. Wait for app to be ready
   await app.whenReady()
+  const probeDirectory = process.env.ANSWERCUE_PACKAGE_SMOKE_DIR;
+  if (probeDirectory) {
+    try {
+      const { verifyPackagedRuntime } = require('./packageRuntimeProbe');
+      await verifyPackagedRuntime(probeDirectory);
+      app.exit(0);
+    } catch (error) { console.error('[package-runtime-probe] FAIL', error); app.exit(1); }
+    return;
+  }
 
   // A normal macOS app already has a Dock entry. Do not demote it to
   // accessory and promote it again during startup: that creates unnecessary
