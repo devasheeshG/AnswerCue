@@ -1,5 +1,38 @@
 # Changelog
 
+## [2.8.4] - 2026-10-08
+
+### Summary
+
+AnswerCue v2.8.4 fixes redundant macOS Dock visibility transitions during startup and reopening, and corrects interview-overlay cleanup during quitting and window recreation.
+
+### What's New
+
+- **Stable Dock visibility:** Reopening reuses the existing Dock entry; concurrent requests share one native visibility transition.
+
+### Improvements
+
+- Normal startup keeps the application's existing Dock activation policy.
+- Stealth visibility changes converge on the latest setting and respect Electron's hide-after-show cooldown.
+- Cancels queued Dock changes during shutdown.
+
+### Fixes
+
+- Removed normal startup's accessory-to-regular policy changes.
+- Avoids calling dock.show when the icon is already visible.
+- A visible interview overlay no longer cancels application quit.
+- Closing and recreating the launcher destroys the previous overlay instead of orphaning its renderer.
+
+### Technical
+
+- Bumped package version to `2.8.4`.
+- Eleven focused checks cover normal startup, repeated activation, concurrent show requests, rapid toggles, cooldown cancellation, native errors, shutdown, and overlay cleanup.
+- The reported duplicate icons appeared with one main app process and correctly configured helper background flags. A Dock restart cleared them temporarily; the code fix removes risky visibility transitions rather than changing helper identities or the single-instance lock.
+- macOS package signature verification remains required for app bundles, mounted DMGs, and extracted ZIPs. Installed-Mac confirmation of Dock behavior remains necessary.
+- OpenAI response tiers, saved settings, and interview history retain their existing behavior.
+
+See [.github/releases/v2.8.4.md](.github/releases/v2.8.4.md) for downloads and installation notes.
+
 ## [2.8.3] - 2026-10-08
 
 ### Summary

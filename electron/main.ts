@@ -1,3 +1,4 @@
+import { MacDockVisibility } from './services/MacDockVisibility';
 import { app, BrowserWindow, Tray, Menu, nativeImage, ipcMain, shell, systemPreferences, screen, desktopCapturer } from "electron"
 import * as crypto from "crypto"
 import path from "path"
@@ -11,6 +12,16 @@ if (!app.isPackaged) {
 const APP_NAME = "AnswerCue";
 const APP_ID = "com.answercue.desktop";
 const DEBUG_LOG_FILE_NAME = "answercue_debug.log";
+
+let macDockVisibility: MacDockVisibility | null = null;
+
+function setMacDockVisible(visible: boolean): Promise<void> {
+  if (process.platform !== 'darwin') return Promise.resolve();
+  macDockVisibility ??= new MacDockVisibility(app.dock);
+  return macDockVisibility.setVisible(visible).catch(error => {
+    console.error('[Dock] Visibility transition failed:', error);
+  });
+}
 
 /**
  * Whether THIS build carries a real Developer ID signature.
@@ -709,7 +720,7 @@ export class AppState {
           // win.focus() can cause macOS to re-activate the app. Re-hide the dock
           // if we are in undetectable mode.
           if (process.platform === 'darwin' && this.isUndetectable) {
-            app.dock.hide();
+            void setMacDockVisible(false);
           }
           const mainWindow = this.getMainWindow();
           if (mainWindow) {
@@ -724,7 +735,7 @@ export class AppState {
           this.recordScreenshotUsage(screenshotPath, preview, 'full');
           this.showMainWindow(true);
           if (process.platform === 'darwin' && this.isUndetectable) {
-            app.dock.hide();
+            void setMacDockVisible(false);
           }
           this.sendToMeetingSurfaces('global-shortcut', {
             action: 'captureAndSolveCode',
@@ -4493,8 +4504,7 @@ export class AppState {
     // Persist state via SettingsManager
     SettingsManager.getInstance().set('isUndetectable', state);
 
-    // Cancel all pending disguise timers to prevent their app.setName() calls
-    // from re-registering the dock icon after we hide it
+    // Stop pending process-title refreshes when entering stealth.
     if (state) {
       for (const timer of this._disguiseTimers) {
         clearTimeout(timer);
@@ -4517,7 +4527,7 @@ export class AppState {
         this._dockDebounceTimer = null;
       }
 
-      this._dockDebounceTimer = setTimeout(() => {
+      this._dockDebounceTimer = setTimeout(async () => {
         this._dockDebounceTimer = null;
 
         // Read the settled state — may differ from the `state` captured above
@@ -4550,23 +4560,20 @@ export class AppState {
             !targetFocusWindow.isDestroyed() &&
             targetFocusWindow.isFocused();
 
-          console.log('[Stealth] Calling app.dock.hide()');
-          app.dock.hide();
-          this.hideTray();
-
-          // If AnswerCue was the focused window when the user toggled stealth,
-          // restore focus to our window after dock.hide() so macOS does not
-          // hand control to Chrome / whatever is behind us.
-          // We use win.focus() (not app.focus()) to avoid the heavy-handed
-          // [NSApp activateIgnoringOtherApps:YES] side-effect.
-          if (answerFlowWasFocused && targetFocusWindow && !targetFocusWindow.isDestroyed()) {
-            targetFocusWindow.focus();
+          console.log('[Stealth] Hiding Dock entry');
+          await setMacDockVisible(false);
+          if (this.isUndetectable && !this.isQuitting()) {
+            this.hideTray();
+            // Restore focus only if stealth is still the latest requested state.
+            if (answerFlowWasFocused && targetFocusWindow && !targetFocusWindow.isDestroyed()) {
+              targetFocusWindow.focus();
+            }
           }
         } else {
-          console.log('[Stealth] Calling app.dock.show()');
-          app.dock.show();
-          this.showTray();
-          // Do NOT call focus() — let the user's current app retain focus
+          console.log('[Stealth] Showing Dock entry if hidden');
+          await setMacDockVisible(true);
+          if (!this.isUndetectable && !this.isQuitting()) this.showTray();
+          // Do NOT call focus() — let the user's current app retain focus.
         }
 
         if (targetFocusWindow && targetFocusWindow === settingsWindow) {
@@ -4714,9 +4721,8 @@ export class AppState {
     // 1. Update process title (affects Activity Monitor / Task Manager)
     process.title = appName;
 
-    // 2. Update app name (affects macOS Menu / Dock)
-    // Skip when undetectable — app.setName() causes macOS to re-register
-    // the app and re-show the dock icon even after dock.hide()
+    // 2. Update Electron application metadata outside stealth mode.
+    // Dock visibility is controlled separately by MacDockVisibility.
     if (!this.isUndetectable) {
       app.setName(appName);
     }
@@ -4776,9 +4782,7 @@ export class AppState {
     this._disguiseTimers = [];
 
     // Periodically re-assert process.title only — it can drift on some systems.
-    // NOTE: We intentionally do NOT call app.setName() here — it was already called
-    // synchronously above, and repeated calls on macOS cause the system to briefly
-    // show a second dock tile while re-registering the app identity.
+    // Application metadata was already set synchronously above.
     const scheduleUpdate = (ms: number) => {
       const ts = setTimeout(() => {
         process.title = appName;
@@ -4833,19 +4837,13 @@ async function initializeApp() {
   // 2. Wait for app to be ready
   await app.whenReady()
 
-  // 2a. PRE-EMPTIVE dock hide: must happen before ANY operation that causes macOS to
-  // register a dock entry (app.setName, BrowserWindow creation, etc.).
-  // We read isUndetectable directly from settings here — AppState singleton isn't
-  // constructed yet, so we cannot call appState.getUndetectable().
+  // A normal macOS app already has a Dock entry. Do not demote it to
+  // accessory and promote it again during startup: that creates unnecessary
+  // asynchronous Launch Services transitions and can leave duplicate tiles.
   let isUndetectableOnStartup = false;
   if (process.platform === 'darwin') {
-    // SettingsManager is already statically imported — no require() needed.
     isUndetectableOnStartup = SettingsManager.getInstance().get('isUndetectable') ?? false;
-    if (isUndetectableOnStartup) {
-      app.dock.hide();
-    } else {
-      app.setActivationPolicy('accessory');
-    }
+    if (isUndetectableOnStartup) await setMacDockVisible(false);
   }
 
   process.title = APP_NAME;
@@ -4944,9 +4942,6 @@ async function initializeApp() {
   // Apply initial stealth state based on isUndetectable setting.
   // NOTE: app.dock.hide() was already called pre-emptively before createWindow()
   // when isUndetectable=true. Here we only need to initialize the tray for non-stealth mode.
-  if (process.platform === 'darwin' && !appState.getUndetectable()) {
-    app.setActivationPolicy('regular');
-  }
   if (!appState.getUndetectable()) {
     // Normal mode: show tray (dock is already showing — no need to call dock.show() again)
     appState.showTray();
@@ -5126,7 +5121,7 @@ async function initializeApp() {
       // Do NOT call dock.show() while a meeting is running — the dock icon
       // appearing mid-meeting is a critical stealth failure.
       if (!appState.getUndetectable() && !appState.getIsMeetingActive()) {
-        app.dock.show();
+        void setMacDockVisible(true);
       }
     }
 
@@ -5152,6 +5147,7 @@ async function initializeApp() {
   app.on("before-quit", (event) => {
     console.log("App is quitting, cleaning up resources...");
     appState.setQuitting(true);
+    macDockVisibility?.dispose();
 
     // Stop the default-output watcher so the setInterval doesn't keep calling
     // into the native module while V8 is tearing down. Without this, quitting

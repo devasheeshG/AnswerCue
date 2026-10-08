@@ -493,7 +493,7 @@ export class WindowHelper {
       this.launcherWindow = null;
       // If launcher closes, we should probably quit app or close overlay
       if (this.overlayWindow && !this.overlayWindow.isDestroyed()) {
-        this.overlayWindow.close();
+        this.overlayWindow.destroy();
       }
       this.overlayWindow = null;
       this.isWindowVisible = false;
@@ -536,7 +536,7 @@ export class WindowHelper {
       }
 
       this.overlayWindow.on('close', (e) => {
-        if (this.overlayWindow?.isVisible()) {
+        if (!this.appState.isQuitting() && this.overlayWindow?.isVisible()) {
           e.preventDefault();
           if (this.appState.getIsMeetingActive()) {
             // Meeting running — just hide the overlay; user can resume from the
