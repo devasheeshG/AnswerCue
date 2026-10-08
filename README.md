@@ -39,7 +39,7 @@ Installers are published from GitHub Releases.
 
 | Platform | Download | Notes |
 | --- | --- | --- |
-| Windows 10/11 x64 | [Latest release assets](https://github.com/devasheeshG/AnswerCue/releases/latest) | NSIS installer. Current builds are configured for Azure Artifact Signing through the repository signing secrets. |
+| Windows 10/11 x64 | [Latest release assets](https://github.com/devasheeshG/AnswerCue/releases/latest) | NSIS installer. Published unsigned when Azure signing secrets are absent; Windows may display a SmartScreen warning. |
 | macOS Apple Silicon | [Latest release assets](https://github.com/devasheeshG/AnswerCue/releases/latest) | Use the Apple Silicon ZIP/DMG artifact when available. |
 | macOS Intel | [Latest release assets](https://github.com/devasheeshG/AnswerCue/releases/latest) | Use the Intel DMG/ZIP artifact when available. |
 

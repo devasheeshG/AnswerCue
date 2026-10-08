@@ -17,6 +17,7 @@ AnswerCue v2.8.10 updates the desktop runtime and stabilizes macOS application/h
 - Retains electron-builder's canonical helper names, bundle identifiers, and background flags instead of changing helper bundle names to CoreServices.
 - Initial normal mode uses the packaged Dock icon. Repeated identical disguise requests are idempotent, and normal mode does not schedule repeated process-title refreshes.
 - Keeps the architecture-specific dependency allowlist and packaged runtime checks introduced in v2.8.8.
+- Windows release CI publishes unsigned x64 installers when Azure signing credentials are absent; signing and signature verification remain enabled when configured.
 
 ### Fixes
 

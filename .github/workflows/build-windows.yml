@@ -2,6 +2,11 @@ name: Build Windows
 
 on:
   workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Existing release tag to build and upload (leave empty for a CI-only build)
+        type: string
+        default: ""
   push:
     branches:
       - main
@@ -19,8 +24,27 @@ jobs:
     timeout-minutes: 90
 
     steps:
+      - name: Validate release rebuild tag
+        if: inputs.release_tag != ''
+        env:
+          RELEASE_TAG: ${{ inputs.release_tag }}
+        run: |
+          if ($env:RELEASE_TAG -notmatch '^v[0-9]+\.[0-9]+\.[0-9]+$') {
+            throw 'release_tag must be a version tag such as v2.8.10.'
+          }
+
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.release_tag || github.ref }}
+
+      - name: Verify release version
+        if: startsWith(github.ref, 'refs/tags/v') || inputs.release_tag != ''
+        env:
+          RELEASE_TAG: ${{ inputs.release_tag || github.ref_name }}
+        run: |
+          $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
+          if ($env:RELEASE_TAG -ne "v$version") { throw 'Release tag does not match package version.' }
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -48,6 +72,7 @@ jobs:
         run: npm run verify:package-inputs -- --require-native
 
       - name: Package Windows x64 installer
+        id: package
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
@@ -58,31 +83,37 @@ jobs:
           AZURE_CODESIGNING_PROFILE_NAME: ${{ secrets.AZURE_CODESIGNING_PROFILE_NAME }}
           AZURE_CODESIGNING_PUBLISHER_NAME: ${{ secrets.AZURE_CODESIGNING_PUBLISHER_NAME }}
         run: |
-          if ("${{ startsWith(github.ref, 'refs/tags/v') }}" -eq "true") {
-            $required = @('AZURE_TENANT_ID', 'AZURE_CLIENT_ID', 'AZURE_CLIENT_SECRET', 'AZURE_CODESIGNING_ENDPOINT', 'AZURE_CODESIGNING_ACCOUNT_NAME', 'AZURE_CODESIGNING_PROFILE_NAME', 'AZURE_CODESIGNING_PUBLISHER_NAME')
-            foreach ($name in $required) {
-              if ([string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable($name))) {
-                throw "Missing signing configuration: $name. Refusing to publish an unsigned Windows release."
-              }
-            }
+          $required = @('AZURE_TENANT_ID', 'AZURE_CLIENT_ID', 'AZURE_CLIENT_SECRET', 'AZURE_CODESIGNING_ENDPOINT', 'AZURE_CODESIGNING_ACCOUNT_NAME', 'AZURE_CODESIGNING_PROFILE_NAME', 'AZURE_CODESIGNING_PUBLISHER_NAME')
+          $missing = @($required | Where-Object { [string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable($_)) })
+          $signed = $missing.Count -eq 0
+          "signed=$($signed.ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT
+          if (!$signed) {
+            Write-Host 'Azure signing is not fully configured. Building an unsigned Windows installer.'
+            # Clear partial configuration so the packaging config cannot attempt Azure signing.
+            foreach ($name in $required) { [Environment]::SetEnvironmentVariable($name, $null) }
+            $env:CSC_IDENTITY_AUTO_DISCOVERY = 'false'
           }
           npx electron-builder --config electron-builder.windows.cjs --win nsis:x64 --publish never
 
       - name: Verify packaged renderer exists
         run: node scripts/verify-package-inputs.js release/win-unpacked/resources/app.asar
 
-      - name: Verify Windows release signatures
-        if: startsWith(github.ref, 'refs/tags/v')
+      - name: Verify Windows signing status
+        env:
+          EXPECT_SIGNED: ${{ steps.package.outputs.signed }}
         run: |
           $installers = @(Get-ChildItem -Path release/*.exe -File)
           if ($installers.Count -eq 0) { throw 'No Windows installer found.' }
           $files = @('release/win-unpacked/AnswerCue.exe') + @($installers.FullName)
           foreach ($file in $files) {
             $signature = Get-AuthenticodeSignature -FilePath $file
-            if ($signature.Status -ne 'Valid') {
+            if ($env:EXPECT_SIGNED -eq 'true' -and $signature.Status -ne 'Valid') {
               throw "Invalid Authenticode signature for ${file}: $($signature.Status)"
             }
-            Write-Host "Verified: $file ($($signature.SignerCertificate.Subject))"
+            if ($env:EXPECT_SIGNED -ne 'true' -and $signature.Status -notin @('NotSigned', 'Valid')) {
+              throw "Unexpected signature status for ${file}: $($signature.Status)"
+            }
+            Write-Host "Verified signing status: $file ($($signature.Status))"
           }
 
       - name: Upload Windows installer
@@ -95,12 +126,15 @@ jobs:
             release/latest.yml
           if-no-files-found: error
 
-      - name: Upload verified Windows release assets
-        if: startsWith(github.ref, 'refs/tags/v')
+      - name: Upload Windows release assets
+        if: startsWith(github.ref, 'refs/tags/v') || inputs.release_tag != ''
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ inputs.release_tag || github.ref_name }}
         run: |
           $assets = @(Get-ChildItem -Path release/*.exe, release/*.blockmap, release/latest.yml -File)
           if ($assets.Count -eq 0) { throw 'No Windows release assets found.' }
-          gh release upload "$env:GITHUB_REF_NAME" $assets.FullName --repo "$env:GITHUB_REPOSITORY" --clobber
+          gh release view "$env:RELEASE_TAG" --repo "$env:GITHUB_REPOSITORY"
+          if ($LASTEXITCODE -ne 0) { throw 'Create the release before uploading Windows assets.' }
+          gh release upload "$env:RELEASE_TAG" $assets.FullName --repo "$env:GITHUB_REPOSITORY" --clobber
           if ($LASTEXITCODE -ne 0) { throw 'Windows release upload failed.' }
