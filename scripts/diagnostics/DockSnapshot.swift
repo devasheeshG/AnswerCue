@@ -49,6 +49,8 @@ func denyMicrophone(_ element: AXUIElement, _ depth: Int = 0) -> Bool {
 }
 if CommandLine.arguments.contains("--dismiss-permissions") {
     for application in NSWorkspace.shared.runningApplications {
+        let identity = ((application.bundleIdentifier ?? "") + " " + (application.localizedName ?? "")).lowercased()
+        if !["notification", "securityagent", "coreservicesuiagent", "systemuiserver", "tccd"].contains(where: { identity.contains($0) }) { continue }
         let element = AXUIElementCreateApplication(application.processIdentifier)
         if let windows = attribute(element, "AXWindows") as? [AXUIElement] {
             for window in windows {

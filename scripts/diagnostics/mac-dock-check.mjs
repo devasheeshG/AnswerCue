@@ -73,5 +73,7 @@ try {
   }
   socket.close();
 } catch (error) { fs.writeFileSync(path.join(output, 'debug-toggle-error.log'), error.stack); }
-child.kill('SIGTERM'); await sleep(3000); snapshot('direct-quit');fs.closeSync(log);
+child.kill('SIGTERM'); await sleep(3000); const final = snapshot('direct-quit');
+for (const application of final.applications) run('kill', ['-KILL', String(application.pid)], true);
+child.kill('SIGKILL'); child.unref(); fs.closeSync(log);
 console.log(`Dock diagnostic evidence: ${output}`);
