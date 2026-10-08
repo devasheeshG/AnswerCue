@@ -1,10 +1,10 @@
 # Changelog
 
-## [2.8.7] - 2026-10-08
+## [2.8.8] - 2026-10-08
 
 ### Summary
 
-AnswerCue v2.8.7 reduces Mac package size by removing unused libraries, shipping compiled frontend/backend code without duplicate SDK copies, and selecting native libraries for the target architecture. It retains the cloud transcription and interview features from v2.8.6.
+AnswerCue v2.8.8 reduces Mac package size by removing unused libraries, shipping compiled frontend/backend code without duplicate SDK copies, and selecting native libraries for the target architecture. It retains the cloud transcription and interview features from v2.8.6.
 
 ### What's New
 
@@ -23,13 +23,14 @@ AnswerCue v2.8.7 reduces Mac package size by removing unused libraries, shipping
 
 ### Fixes
 
+- Mac file rules now retain the production allowlist instead of replacing it with exclusion-only rules, which previously caused the candidate to include source/build files and both audio architectures. Tests exercise the complete electron-builder matcher setup; CI rejects source, temporary, build, and environment files.
 - PDF imports prefer the unpacked worker file so Node can load it from a real filesystem path.
 - Ensures both Mac canvas variants are installed during cross-architecture builds, alongside Sharp's native image libraries.
 - Local release commands use the same production Electron bundling mode as CI.
 
 ### Technical
 
-- Bumped package version to `2.8.7`. Source and detailed release notes are published in this fork.
+- Bumped package version to `2.8.8`. Source and detailed release notes are published in this fork.
 - Full automated suite: **1,055 passed, zero failed, 41 skipped**. Renderer type checking and production builds pass. Electron type checking retains the unchanged fork's 37 diagnostics, with no new diagnostics.
 - File-selection tests exercise electron-builder's actual filters for both Mac architectures, including native library retention and rejection of other architectures.
 - Mac release CI must pass packaged runtime probes, dependency inventories, signature checks, mounted DMG verification, and extracted updater ZIP checks before release assets are published. Intel runtime execution requires Rosetta on the build runner; CI explicitly reports a skip if unavailable.
@@ -37,7 +38,13 @@ AnswerCue v2.8.7 reduces Mac package size by removing unused libraries, shipping
 - Existing provider keys, custom instructions, Persona, and interview history use the same storage paths. No user data or old model cache is deleted.
 - Live transcription with user API keys, microphone/system audio capture, macOS permissions, and Dock behavior still require installed-Mac checks. Packaging probes do not record audio, read keys, or make paid API requests.
 
-See [.github/releases/v2.8.7.md](.github/releases/v2.8.7.md) for downloads and installation notes.
+See [.github/releases/v2.8.8.md](.github/releases/v2.8.8.md) for downloads and installation notes.
+
+## [2.8.7] - 2026-10-08
+
+### Summary
+
+Unpublished candidate. Package inventory checks caught a Mac file-rule override that included source/build files and the other audio architecture. Artifact upload was blocked; the corrected cleanup is released as v2.8.8.
 
 ## [2.8.6] - 2026-10-08
 

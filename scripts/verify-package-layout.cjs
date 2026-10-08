@@ -12,6 +12,7 @@ for (const pkg of ['react', 'react-dom', 'react-icons', 'lucide-react', 'three',
 const other = arch === 'arm64' ? 'x64' : 'arm64';
 assert(!files.includes(`native-module/index.darwin-${other}.node`), 'Other audio architecture was packaged');
 for (const file of files) {
+  assert(!/^(native-module\/target\/|electron\/|src\/|scripts\/|temp\/|\.env(?:$|\.))/.test(file), `Source/build artifact shipped: ${file}`);
   if (file.startsWith('node_modules/@img/') && /sharp.*darwin-/.test(file)) assert(!file.includes(`darwin-${other}`), `Other sharp architecture: ${file}`);
   if (file.startsWith('node_modules/@napi-rs/canvas-')) assert(file.startsWith(`node_modules/@napi-rs/canvas-darwin-${arch}/`) || file === `node_modules/@napi-rs/canvas-darwin-${arch}`, `Other canvas architecture: ${file}`);
   assert(!file.endsWith('.map'), `Source map shipped: ${file}`);

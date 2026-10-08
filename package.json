@@ -1,6 +1,6 @@
 {
   "name": "answercue",
-  "version": "2.8.7",
+  "version": "2.8.8",
   "main": "dist-electron/electron/main.js",
   "description": "AnswerCue is a live interview assistant that helps prepare context, transcribe conversations, and generate AI-guided answers.",
   "scripts": {
@@ -99,6 +99,17 @@
         "NSAudioCaptureUsageDescription": "AnswerCue needs system audio access to transcribe interview audio."
       },
       "files": [
+        "dist/**",
+        "dist-electron/**",
+        "native-module/index.js",
+        "native-module/package.json",
+        "native-module/index.${platform}-${arch}{,-gnu,-msvc}.node",
+        "package.json",
+        "LICENSE",
+        "LICENSES/**",
+        "!**/node_modules/**/*.map",
+        "!**/node_modules/pdf-parse/dist/**/{esm,web}{,/**}",
+        "!**/node_modules/pdfjs-dist/web{,/**}",
         "!**/node_modules/@img/!(colour|sharp-darwin-${arch}|sharp-libvips-darwin-${arch}){,/**}",
         "!**/node_modules/@napi-rs/canvas-!(darwin-${arch}){,/**}"
       ]
