@@ -21,6 +21,10 @@ Requires macOS 12+ on Apple Silicon or Intel, or Windows 10/11 on Intel/AMD 64-b
 
 AnswerCue is a desktop interview assistant for preparing context, transcribing live interviews, and continuing the conversation afterward with the full interview history available as context.
 
+![AnswerCue dashboard showing saved interviews, a preparation chat about payment system design, an attached background document, and interview audio settings](assets/readme/answercue-dashboard-demo.png)
+
+*Demo interview workspace with fictional companies, sample chat, and a sample background document.*
+
 It is designed around one flow:
 
 1. Configure your AI provider, audio devices, and permissions.
