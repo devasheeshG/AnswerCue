@@ -67,7 +67,7 @@ permissions:
 
 jobs:
   build-macos:
-    runs-on: macos-14 # Apple Silicon runner; builds both arches via ANSWERCUE_BUILD_ALL_MAC_ARCHES
+    runs-on: macos-26 # Apple Silicon runner; builds both arches via ANSWERCUE_BUILD_ALL_MAC_ARCHES
     timeout-minutes: 90
     steps:
       - name: Validate release rebuild tag
