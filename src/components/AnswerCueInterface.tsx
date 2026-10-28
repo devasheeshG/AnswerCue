@@ -4846,15 +4846,8 @@ Provide only the answer, nothing else.`;
                   </div>
                 )}
 
-                {/* data-stealth-engage marks this subtree as
-                                    the ONLY clickable region that engages the
-                                    CGEventTap. See the click-to-activate
-                                    useEffect (~line 2840) for the opt-IN
-                                    rationale — buttons elsewhere in the
-                                    overlay no longer accidentally engage the
-                                    tap and break inputs in Settings/Model
-                                    Selector windows. */}
-                <div className="relative group" data-stealth-engage="true">
+                {/* Ordinary pointer input uses native focus; stealth typing remains available via its shortcut. */}
+                <div className="relative group no-drag" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
                   <input
                     ref={textInputRef}
                     type="text"
@@ -4865,12 +4858,6 @@ Provide only the answer, nothing else.`;
                       e.preventDefault();
                       handleManualSubmit();
                     }}
-                    // Block native DOM focus on click — the panel becoming
-                    // key window is exactly the signal coding-interview
-                    // platforms watch for via window.onblur on the parent.
-                    // mousedown listener (capture phase) already engaged
-                    // the CGEventTap, so typing routes through that path.
-                    onMouseDown={blockInputFocus}
                     readOnly={stealthTapActive}
                     className={`w-full border focus:ring-1 rounded-xl pl-3 pr-10 py-2.5 focus:outline-none transition-all duration-200 ease-sculpted text-[13px] leading-relaxed ${inputClass} ${stealthTapActive ? 'ring-2 ring-emerald-400/30 border-emerald-400/40 shadow-[0_0_12px_rgba(52,211,153,0.15)]' : ''}`}
                     style={appearance.inputStyle}

@@ -3109,6 +3109,32 @@ export function initializeIpcHandlers(appState: AppState): void {
     }
   });
 
+  safeHandle('interview-workspace:fork', async (_, workspaceId: string) => {
+    try {
+      const manager = InterviewWorkspaceStateManager.getInstance();
+      const original = manager.getWorkspace(workspaceId);
+      if (!original) throw new Error('Save this conversation before forking it.');
+      if (original.status === 'active') throw new Error('Stop the interview before forking it.');
+      const id = require('crypto').randomUUID();
+      const db = DatabaseManager.getInstance();
+      const meeting = original.meetingId ? db.getMeetingDetails(original.meetingId) : null;
+      if (!meeting) throw new Error('No saved interview was found for this conversation.');
+      const fork = { ...meeting, id, title: `${meeting.title} (fork)`, titleSource: 'manual' as const,
+        ...(original.chatContextEdited ? { summary: '', detailedSummary: undefined } : {}),
+        date: new Date().toISOString() };
+      const duration = meeting.duration.split(':').map(Number).reduce((total, part) => total * 60 + part, 0) * 1000;
+      db.saveMeeting(fork, Date.now(), duration);
+      const state = manager.saveWorkspace({ ...original, id: `workspace-${id}`, meetingId: id,
+        createdAt: new Date().toISOString(), status: meeting.source === 'chat' ? 'draft' : 'complete' });
+      BrowserWindow.getAllWindows().forEach(win => {
+        if (!win.isDestroyed()) win.webContents.send('meetings-updated');
+      });
+      return { success: true, state, meeting: fork };
+    } catch (error: any) {
+      return { success: false, error: error?.message || 'Could not fork conversation.' };
+    }
+  });
+
   safeHandle('start-meeting', async (event, metadata?: any) => {
     try {
       const { CredentialsManager } = require('./services/CredentialsManager');

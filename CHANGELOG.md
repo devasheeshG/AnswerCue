@@ -1,5 +1,37 @@
 # Changelog
 
+## [2.8.12] - 2026-10-28
+
+### Summary
+
+AnswerCue v2.8.12 adds saved-chat context editing and conversation forks, and restores reliable click-to-type behavior in the live interview popup.
+
+### What's New
+
+- **Select and delete:** With capture stopped, use Select messages and Delete selected to remove chosen chat messages and exclude saved transcript/AI-response entries from the chat and future prompts.
+- **Fork chat:** Create an independent saved copy of a conversation, including retained chat, interview history, documents, and context exclusions. The original conversation is retained.
+
+### Improvements
+
+- Context edits survive reopening the interview and are carried into forks and live-session restarts.
+- Previously generated summaries are omitted from edited chat context so they cannot reintroduce deleted content.
+- Editing and forking are disabled during active capture or an in-flight chat response.
+
+### Fixes
+
+- Clicking the middle of the popup input now uses normal input focus, just like its edges. The input region is explicitly excluded from window dragging.
+- Ordinary input clicks no longer engage stealth keyboard interception. Its explicit shortcut remains available.
+
+### Technical
+
+- Saved transcript exclusions are per workspace; original underlying transcript records are retained. Typed chat messages are removed from the saved workspace.
+- Forks use new interview and workspace IDs and preserve retained document references. No provider keys or settings are copied into chat content.
+- Full suite: **1,065 passed, zero failed, 41 skipped**. Adds persistence/fork regression tests. Browser checks cover message selection/deletion, fork navigation, and popup input clicks at three vertical positions.
+- Native macOS window behavior still needs confirmation on an installed Mac; browser hit-testing does not emulate NSPanel behavior.
+- Existing provider configuration, custom instructions, Persona, and interview history remain available.
+
+See [.github/releases/v2.8.12.md](.github/releases/v2.8.12.md) for downloads and installation notes.
+
 ## [2.8.11] - 2026-10-08
 
 ### Summary

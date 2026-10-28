@@ -25,6 +25,7 @@ import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { oneLight, vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 
 interface Meeting {
+    excludedTimelineIds?: string[];
     id: string;
     title: string;
     date: string;
@@ -570,7 +571,7 @@ const buildTranscriptTimeline = (meeting: Meeting): TranscriptTimelineItem[] => 
     return coalesceTranscriptTurns(
         [...humanSpeech, ...aiInteractions, ...fallbackAssistantSpeech],
         item => normalizeTimestampForSort(item.timestamp, meeting.date),
-    );
+    ).filter(item => !meeting.excludedTimelineIds?.includes(item.id));
 };
 
 interface TranscriptTimelineProps {
@@ -636,6 +637,8 @@ interface InterviewWorkspaceState {
     messages: PrepMessage[];
     selectedDocumentIds: string[];
     contextMarkdown?: string;
+    chatContextEdited?: boolean;
+    excludedTimelineIds?: string[];
     createdAt?: string;
     updatedAt?: string;
 }
@@ -1061,6 +1064,8 @@ interface InterviewPrepPanelProps {
     docError: string | null;
     onDraftChange: (value: string) => void;
     onSubmit: () => void;
+    onDeleteMessages: (ids: string[]) => Promise<void>;
+    onFork: () => Promise<void>;
     onStartInterview: () => void;
     onStopInterview: () => void;
     onUploadDoc: () => void;
@@ -1085,12 +1090,24 @@ const InterviewPrepPanel: React.FC<InterviewPrepPanelProps> = ({
     docError,
     onDraftChange,
     onSubmit,
+    onDeleteMessages,
+    onFork,
     onStartInterview,
     onStopInterview,
     onUploadDoc,
     onToggleDoc,
     onDeleteDoc,
 }) => {
+    const [selectingMessages, setSelectingMessages] = useState(false);
+    const [selectedMessages, setSelectedMessages] = useState<string[]>([]);
+    const [editingChat, setEditingChat] = useState(false);
+    const [editError, setEditError] = useState<string | null>(null);
+    const editChat = async (operation: () => Promise<void>) => {
+        setEditingChat(true); setEditError(null);
+        try { await operation(); setSelectedMessages([]); setSelectingMessages(false); }
+        catch (error) { setEditError(error instanceof Error ? error.message : 'Could not update chat.'); }
+        finally { setEditingChat(false); }
+    };
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const docMenuRef = useRef<HTMLDivElement>(null);
     const composerRef = useRef<HTMLTextAreaElement>(null);
@@ -1186,6 +1203,10 @@ const InterviewPrepPanel: React.FC<InterviewPrepPanelProps> = ({
                     {message.role === 'assistant' ? <img src={icon} alt="" /> : <User size={13} />}
                     <span>{message.role === 'assistant' ? 'AnswerCue' : 'You'}</span>
                     <time>{formatMessageTime(message.createdAt)}</time>
+                    {selectingMessages && <input type="checkbox" aria-label={`Select message: ${message.content.slice(0, 60)}`}
+                        checked={selectedMessages.includes(message.id)} disabled={editingChat}
+                        onChange={event => setSelectedMessages(ids => event.target.checked ? [...ids, message.id] : ids.filter(id => id !== message.id))} />}
+
                     {message.role === 'assistant' && message.content && !message.isStreaming && (
                         <button
                             type="button"
@@ -1289,6 +1310,9 @@ const InterviewPrepPanel: React.FC<InterviewPrepPanelProps> = ({
                     <div className={`max-w-[82%] ${isAi ? 'w-full' : ''}`}>
                         <div className={`mb-1 flex items-center gap-1.5 text-[11px] font-semibold ${alignRight ? 'justify-end' : 'justify-start'} ${badgeTone}`}>
                             <Icon size={12} />
+                            {selectingMessages && !isMeetingActive && <input type="checkbox" aria-label={`Select message: ${item.text.slice(0, 60)}`}
+                                checked={selectedMessages.includes(`timeline:${item.id}`)} disabled={editingChat}
+                                onChange={event => setSelectedMessages(ids => event.target.checked ? [...ids, `timeline:${item.id}`] : ids.filter(id => id !== `timeline:${item.id}`))} />}
                             <span>{item.label}{item.isLivePartial ? ' typing' : ''}</span>
                             <span className="font-normal text-text-tertiary">{formatTimelineTime(item.timestamp)}</span>
                         </div>
@@ -1332,6 +1356,12 @@ const InterviewPrepPanel: React.FC<InterviewPrepPanelProps> = ({
 
     return (
         <div className="workspace-conversation">
+            {!isMeetingActive && (messages.length > 0 || savedItems.length > 0 || Boolean(meeting)) && <div className="flex items-center gap-3 px-6 py-2 text-xs">
+                <button disabled={busy || editingChat} onClick={() => { setSelectingMessages(value => !value); setSelectedMessages([]); }}> {selectingMessages ? 'Cancel selection' : 'Select messages'}</button>
+                {selectingMessages && <button disabled={!selectedMessages.length || busy || editingChat} onClick={() => void editChat(() => onDeleteMessages(selectedMessages))}>Delete selected ({selectedMessages.length})</button>}
+                <button disabled={busy || editingChat} onClick={() => void editChat(onFork)}>Fork chat</button>
+                {editError && <span role="alert">{editError}</span>}
+            </div>}
             <div className="workspace-conversation-toolbar">
                 <div className="workspace-phase" data-live={isMeetingActive}>
                     {isMeetingActive ? <AudioLines size={14} /> : <MessageSquare size={14} />}
@@ -1962,6 +1992,8 @@ const Launcher: React.FC<LauncherProps> = ({ onStartMeeting, onOpenSettings, onP
     const [isSavingDocDetails, setIsSavingDocDetails] = useState(false);
     const [prepMessages, setPrepMessages] = useState<PrepMessage[]>([]);
     const [prepDraft, setPrepDraft] = useState('');
+    const [excludedTimelineIds, setExcludedTimelineIds] = useState<string[]>([]);
+    const [chatContextEdited, setChatContextEdited] = useState(false);
     const [workspaceStateId, setWorkspaceStateId] = useState(() => genMessageId());
     const [workspaceContextDocIds, setWorkspaceContextDocIds] = useState<string[]>([]);
     const [workspaceConversationState, setWorkspaceConversationState] = useState<ConversationState>('idle');
@@ -2016,12 +2048,16 @@ const Launcher: React.FC<LauncherProps> = ({ onStartMeeting, onOpenSettings, onP
     const hydrateWorkspaceForMeeting = useCallback(async (meetingId: string) => {
         setWorkspaceConversationState('idle');
         setWorkspaceErrorMessage(null);
+        setChatContextEdited(false);
+        setExcludedTimelineIds([]);
         setSelectedDocIds([]);
         resetWorkspaceStreamBuffer();
 
         try {
             const state = await window.electronAPI?.interviewWorkspaceGetByMeeting?.(meetingId) as InterviewWorkspaceState | null | undefined;
             if (state?.id) {
+                setChatContextEdited(Boolean(state.chatContextEdited));
+                setExcludedTimelineIds(state.excludedTimelineIds || []);
                 setWorkspaceStateId(state.id);
                 setPrepMessages((Array.isArray(state.messages) ? state.messages : []).map(message => ({
                     ...message,
@@ -2051,6 +2087,8 @@ const Launcher: React.FC<LauncherProps> = ({ onStartMeeting, onOpenSettings, onP
             const state = await window.electronAPI?.interviewWorkspaceGetById?.(draftId) as InterviewWorkspaceState | null | undefined;
             if (state && state.status === 'draft') {
                 if (state.meetingId) selectMeeting(await window.electronAPI.getMeetingDetails(state.meetingId));
+                setChatContextEdited(Boolean(state.chatContextEdited));
+                setExcludedTimelineIds(state.excludedTimelineIds || []);
                 const docIds = Array.isArray(state.selectedDocumentIds) ? state.selectedDocumentIds : [];
                 setPrepMessages((Array.isArray(state.messages) ? state.messages : []).map(message => ({
                     ...message,
@@ -2166,6 +2204,8 @@ const Launcher: React.FC<LauncherProps> = ({ onStartMeeting, onOpenSettings, onP
         messages?: PrepMessage[];
         selectedDocumentIds?: string[];
         status?: InterviewWorkspaceState['status'];
+        chatContextEdited?: boolean;
+        excludedTimelineIds?: string[];
     } = {}) => {
         const id = overrides.id || workspaceStateId;
         if (!id || !window.electronAPI?.interviewWorkspaceSave) return null;
@@ -2189,6 +2229,8 @@ const Launcher: React.FC<LauncherProps> = ({ onStartMeeting, onOpenSettings, onP
             meetingId,
             status,
             messages: persistedMessages,
+            chatContextEdited: overrides.chatContextEdited ?? chatContextEdited,
+            excludedTimelineIds: overrides.excludedTimelineIds ?? excludedTimelineIds,
             selectedDocumentIds,
             contextMarkdown,
         });
@@ -2200,6 +2242,8 @@ const Launcher: React.FC<LauncherProps> = ({ onStartMeeting, onOpenSettings, onP
         }
         return result;
     }, [
+        chatContextEdited,
+        excludedTimelineIds,
         getWorkspaceDocumentIds,
         interviewDocs,
         isMeetingActive,
@@ -2222,6 +2266,8 @@ const Launcher: React.FC<LauncherProps> = ({ onStartMeeting, onOpenSettings, onP
         window.electronAPI?.interviewWorkspaceGetById?.(savedDraftId)
             .then((state: InterviewWorkspaceState | null) => {
                 if (!state || state.status !== 'draft') return;
+                setChatContextEdited(Boolean(state.chatContextEdited));
+                setExcludedTimelineIds(state.excludedTimelineIds || []);
                 if (state.meetingId) {
                     window.electronAPI.getMeetingDetails(state.meetingId).then(selectMeeting);
                 }
@@ -2229,6 +2275,8 @@ const Launcher: React.FC<LauncherProps> = ({ onStartMeeting, onOpenSettings, onP
                     ...message,
                     isStreaming: false,
                 })));
+                setChatContextEdited(Boolean(state.chatContextEdited));
+                setExcludedTimelineIds(state.excludedTimelineIds || []);
                 const docIds = Array.isArray(state.selectedDocumentIds) ? state.selectedDocumentIds : [];
                 setSelectedDocIds(docIds);
                 setWorkspaceContextDocIds(docIds);
@@ -2827,6 +2875,8 @@ const Launcher: React.FC<LauncherProps> = ({ onStartMeeting, onOpenSettings, onP
     const handleNewInterview = () => {
         const nextWorkspaceId = genMessageId();
         localStorage.setItem('answercue_current_interview_workspace_id', nextWorkspaceId);
+        setChatContextEdited(false);
+        setExcludedTimelineIds([]);
         setWorkspaceStateId(nextWorkspaceId);
         selectMeeting(null);
         setForwardMeeting(null);
@@ -3219,7 +3269,7 @@ const Launcher: React.FC<LauncherProps> = ({ onStartMeeting, onOpenSettings, onP
             const context = buildInterviewWorkspaceChatContext(
                 messagesForContext,
                 documentsForContext,
-                selectedMeeting,
+                chatContextEdited && selectedMeeting ? { ...selectedMeeting, excludedTimelineIds, summary: '', detailedSummary: undefined } : selectedMeeting,
                 liveTranscript,
                 phase || 'before',
             );
@@ -3338,7 +3388,7 @@ const Launcher: React.FC<LauncherProps> = ({ onStartMeeting, onOpenSettings, onP
             title: selectedMeeting?.title === 'Processing...' ? undefined : selectedMeeting?.title,
             interviewContext: {
                 workspaceStateId,
-                contextMarkdown: buildInterviewWorkspaceChatContext(prepMessages, interviewDocs.filter(doc => interviewDocumentIds.includes(doc.id)), selectedMeeting, liveTranscript, 'before'),
+                contextMarkdown: buildInterviewWorkspaceChatContext(prepMessages, interviewDocs.filter(doc => interviewDocumentIds.includes(doc.id)), chatContextEdited && selectedMeeting ? { ...selectedMeeting, excludedTimelineIds, summary: '', detailedSummary: undefined } : selectedMeeting, liveTranscript, 'before'),
                 selectedDocumentIds: interviewDocumentIds,
                 messageCount: prepMessages.filter(message => message.role === 'user').length,
             },
@@ -4231,7 +4281,7 @@ const Launcher: React.FC<LauncherProps> = ({ onStartMeeting, onOpenSettings, onP
                                                     key={workspaceStateId}
                                                     isLight={isLight}
                                                     isMeetingActive={isMeetingActive}
-                                                    meeting={selectedMeeting}
+                                                    meeting={selectedMeeting ? { ...selectedMeeting, excludedTimelineIds } : null}
                                                     liveTranscript={liveTranscript}
                                                     messages={prepMessages}
                                                     draft={prepDraft}
@@ -4245,6 +4295,24 @@ const Launcher: React.FC<LauncherProps> = ({ onStartMeeting, onOpenSettings, onP
                                                     docError={docError}
                                                     onDraftChange={setPrepDraft}
                                                     onSubmit={submitPrepMessage}
+                                                    onDeleteMessages={async ids => {
+                                                        const remaining = prepMessages.filter(message => !ids.includes(message.id));
+                                                        const excluded = Array.from(new Set([...excludedTimelineIds, ...ids.filter(id => id.startsWith('timeline:')).map(id => id.slice(9))]));
+                                                        const result = await persistWorkspaceState({ messages: remaining, chatContextEdited: true, excludedTimelineIds: excluded });
+                                                        if (!result?.success) throw new Error(result?.error || 'Could not delete messages.');
+                                                        setPrepMessages(remaining);
+                                                        setExcludedTimelineIds(excluded);
+                                                        setLiveTranscript([]);
+                                                        setChatContextEdited(true);
+                                                    }}
+                                                    onFork={async () => {
+                                                        const saved = await persistWorkspaceState();
+                                                        if (!saved?.success) throw new Error('Could not save chat before forking.');
+                                                        const result = await window.electronAPI.interviewWorkspaceFork(workspaceStateId);
+                                                        if (!result.success) throw new Error(result.error);
+                                                        localStorage.setItem('answercue_current_interview_workspace_id', result.state.id);
+                                                        await handleOpenMeeting(result.meeting);
+                                                    }}
                                                     onStartInterview={startPreparedInterview}
                                                     onStopInterview={() => { void window.electronAPI.endMeeting(); }}
                                                     onUploadDoc={handleUploadInterviewDoc}

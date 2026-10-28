@@ -303,6 +303,7 @@ interface ElectronAPI {
   interviewDocsDelete: (id: string) => Promise<{ success: boolean; error?: string }>;
   interviewWorkspaceGetById: (id: string) => Promise<any | null>;
   interviewWorkspaceGetByMeeting: (meetingId: string) => Promise<any | null>;
+  interviewWorkspaceFork: (id: string) => Promise<{ success: boolean; state?: any; meeting?: any; error?: string }>;
   interviewWorkspaceSave: (state: any) => Promise<{ success: boolean; state?: any; meeting?: any; error?: string }>;
   startMeeting: (metadata?: any) => Promise<{ success: boolean; error?: string }>;
   endMeeting: () => Promise<{ success: boolean; error?: string }>;
@@ -1344,6 +1345,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   interviewDocsDelete: (id: string) => ipcRenderer.invoke('interview-docs:delete', id),
   interviewWorkspaceGetById: (id: string) => ipcRenderer.invoke('interview-workspace:get-by-id', id),
   interviewWorkspaceGetByMeeting: (meetingId: string) => ipcRenderer.invoke('interview-workspace:get-by-meeting', meetingId),
+  interviewWorkspaceFork: (id: string) => ipcRenderer.invoke('interview-workspace:fork', id),
   interviewWorkspaceSave: (state: any) => ipcRenderer.invoke('interview-workspace:save', state),
   startMeeting: (metadata?: any) => ipcRenderer.invoke('start-meeting', metadata),
   endMeeting: () => ipcRenderer.invoke('end-meeting'),

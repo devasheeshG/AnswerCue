@@ -79,6 +79,7 @@ AnswerCue is focused on interview workflows, not a generic meeting dashboard.
 - **Document context:** users can upload Markdown, TXT, PDF, and DOCX files. Files are ingested locally into Markdown, saved for reuse, and can be attached per interview.
 - **Custom instructions:** Full typed instructions, the complete extracted text of one attached file, and the saved AI Persona are passed directly to the LLM. No embeddings or vector search are used. The character counter includes typed instructions and file text.
 - **Live interview phase:** the live transcript separates interviewer speech, user speech, and AI responses.
+- **Chat context controls:** With capture stopped, select and delete messages from future context or fork the conversation into an independent saved chat.
 - **Pause and restart:** Stop interview or close the popup to return to the same chat. Add more context and use Restart interview as often as needed; earlier chat, transcript, and AI answers remain available.
 - **Help assistant:** a bottom help entry opens a persistent help chat backed by the in-app AnswerCue Help Guide and the user's selected main LLM.
 - **Light and dark UI:** the UI uses the current AnswerCue palette and supports theme switching.

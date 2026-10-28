@@ -29,6 +29,8 @@ export interface InterviewWorkspaceState {
   messages: InterviewWorkspaceMessage[];
   selectedDocumentIds: string[];
   contextMarkdown?: string;
+  chatContextEdited?: boolean;
+  excludedTimelineIds?: string[];
   createdAt: string;
   updatedAt: string;
 }
@@ -97,6 +99,8 @@ function normalizeState(raw: any, existing?: InterviewWorkspaceState): Interview
     id: normalizeString(raw?.id || existing?.id),
     meetingId: normalizeString(raw?.meetingId || existing?.meetingId) || undefined,
     status,
+    excludedTimelineIds: normalizeDocumentIds(raw?.excludedTimelineIds ?? existing?.excludedTimelineIds),
+    chatContextEdited: raw?.chatContextEdited ?? existing?.chatContextEdited ?? false,
     messages,
     selectedDocumentIds: normalizeDocumentIds(raw?.selectedDocumentIds ?? existing?.selectedDocumentIds),
     contextMarkdown: contextMarkdown || undefined,
