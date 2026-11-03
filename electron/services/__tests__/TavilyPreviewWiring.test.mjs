@@ -2,13 +2,14 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
+import {transformSync} from 'esbuild';
 const source=fs.readFileSync(new URL('../../ipcHandlers.ts',import.meta.url),'utf8');
 const marker='          }, () => {\n            const { CredentialsManager }';
 const start=source.indexOf(marker)+ '          }, '.length;
 const end=source.indexOf('\n          });',start);
 assert.ok(start>10 && end>start);
 const expression=source.slice(start,end)+'\n}';
-function factory(key,fetch) {return vm.runInNewContext(`(${expression})`,{require:()=>({CredentialsManager:{getInstance:()=>({getTavilyApiKey:()=>key})}}),fetch,AbortSignal})()}
+function factory(key,fetch) {const module={exports:{}};vm.runInNewContext(transformSync(`module.exports = (${expression})`,{loader:'ts',format:'cjs'}).code,{module,require:()=>({CredentialsManager:{getInstance:()=>({getTavilyApiKey:()=>key})}}),fetch,AbortSignal});return module.exports();}
 test('actual IPC search resolver stays disabled without a key',()=>{assert.equal(factory('',()=>assert.fail('unexpected network')),null);});
 test('actual IPC search provider sends only the key, query and limit, and reads Tavily results',async()=>{
  let request;
