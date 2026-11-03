@@ -55,3 +55,12 @@ Before any eventual main-branch promotion, restore the stable packaging app ID a
 - Verify Persona and full attached instruction content affect answers, default model/tier selection persists, and no local model is downloaded.
 - Test search success, no-key, no-result and timeout behavior with a real Tavily key; ensure ordinary scoped and live turns do not search.
 - Compare Dock behavior and audio routing on the installed Mac. GitHub runner checks cannot recreate a user's existing Dock cache, devices or macOS permission grants.
+
+## Completed preview validation
+
+- Regression and browser CI: https://github.com/devasheeshG/AnswerCue/actions/runs/41606632123
+- Packaged Mac runtime, inventory, signatures, archives and macOS 27 Dock checks: https://github.com/devasheeshG/AnswerCue/actions/runs/41606631343 (attempt 2 passed; attempt 1 stopped on transient hdiutil Resource busy).
+- Windows installer packaging and signing-status checks: https://github.com/devasheeshG/AnswerCue/actions/runs/41606634743
+- The packaged Mac full-app log confirms its database path ends in `Library/Application Support/AnswerCue-UpstreamPreview/natively.db`.
+- Installers are built from app-source commit `c5833978` and tagged `preview/v2.9.0-upstream.1`. Later branch commits record CI publication and evidence; they do not change the app code.
+- Remaining acceptance work is the native checklist above: real provider calls, live audio devices, permissions, and native popup behavior. No live-key test is claimed.
