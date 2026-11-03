@@ -23,7 +23,7 @@ First isolated upstream integration preview, built from `integration/natively-v3
 ## Technical
 
 - Upstream modules sourced from Natively commit `ccd3540683b6010f632428350cf06f777972692f`; original AGPL licensing is retained.
-- Branch regression CI: **1,084 passed, zero failed, 41 skipped**, production renderer build and browser workflow checks passed.
+- Branch regression CI: **1,085 passed, zero failed, 41 skipped**, production renderer build and browser workflow checks passed.
 - Native runtime/inventory, DMG/signature checks, Mac Dock checks and Windows packaging must pass before these artifacts are published.
 - No new local speech models, embeddings, vector indexing or model downloads.
 - Notepad replacement UI, connectors, hosted sharing, MCP/API exposure, subscription services and screenshot/reordering support for custom buttons are not included in this first preview.

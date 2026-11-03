@@ -31,13 +31,15 @@ Upstream's notepad-based replacement UI, connector integrations, hosted sharing,
 
 ## Test evidence
 
-- Local full suite: 1,082 passed, zero failed, 41 pre-existing skips. Branch CI includes the two additional IPC checks: **1,084 passed, zero failed, 41 skipped**.
+- Local full suite: 1,082 passed, zero failed, 41 pre-existing skips. Branch CI includes the two additional IPC checks: **1,085 passed, zero failed, 41 skipped**.
 - Browser harness mounts the real settings, launcher and popup React components with deterministic IPC fixtures. It checks send/delete/fork, provider settings, action creation/reload/execution, and top/middle/bottom popup focus. It does not substitute for real provider calls or native window testing.
 - Two additional focused IPC wiring checks verify no-key behavior and the actual Tavily request payload (no transcript/document fields).
 - Branch regression CI runs the production renderer build, full test suite and browser checks. Mac and Windows CI additionally build the actual packaged preview; Mac runtime, dependency inventory, DMG/signature integrity and macOS 27 Dock checks remain required.
 - Existing backend TypeScript diagnostics are tracked separately; a successful esbuild bundle is not a claim of a clean backend type check.
 
 ## Trying the preview safely
+
+Profile isolation runs as the first main-process import, before credential modules compute their paths. A bundled test using the real credential module verifies that a preview credential write leaves the stable directory untouched.
 
 The preview version is `2.9.0-upstream.1`, with bundle/app ID `com.answercue.preview` and a separate user-data folder: `~/Library/Application Support/AnswerCue-UpstreamPreview` on macOS. Automatic stable-channel updates are disabled in this preview. It does not migrate the stable profile or copy credentials. Configure test keys yourself in the preview.
 

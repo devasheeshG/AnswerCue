@@ -57,6 +57,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RELEASE_TAG: ${{ inputs.release_tag }}
+          WINDOWS_CANDIDATE_RUN: ${{ inputs.windows_candidate_run }}
         run: |
           set -euo pipefail
           VERSION=${RELEASE_TAG#preview/}
@@ -64,4 +65,9 @@ jobs:
           for FILE in "AnswerCue-$VERSION-arm64.dmg" "AnswerCue-$VERSION-x64.dmg" "AnswerCue-$VERSION-arm64-mac.zip" "AnswerCue-$VERSION-mac.zip" latest-mac.yml; do
             test -s "candidate-assets/$FILE"
           done
+          if [ -n "$WINDOWS_CANDIDATE_RUN" ]; then
+            test -s "candidate-assets/AnswerCue-Setup-$VERSION.exe"
+            test -s "candidate-assets/AnswerCue-Setup-$VERSION.exe.blockmap"
+            test -s candidate-assets/latest.yml
+          fi
           gh release upload "$RELEASE_TAG" candidate-assets/* --repo "$GITHUB_REPOSITORY"
