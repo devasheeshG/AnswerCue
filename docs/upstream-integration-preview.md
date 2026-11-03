@@ -31,7 +31,7 @@ Upstream's notepad-based replacement UI, connector integrations, hosted sharing,
 
 ## Test evidence
 
-- Local full suite: 1,082 passed, zero failed, 41 pre-existing skips.
+- Local full suite: 1,082 passed, zero failed, 41 pre-existing skips. Branch CI includes the two additional IPC checks: **1,084 passed, zero failed, 41 skipped**.
 - Browser harness mounts the real settings, launcher and popup React components with deterministic IPC fixtures. It checks send/delete/fork, provider settings, action creation/reload/execution, and top/middle/bottom popup focus. It does not substitute for real provider calls or native window testing.
 - Two additional focused IPC wiring checks verify no-key behavior and the actual Tavily request payload (no transcript/document fields).
 - Branch regression CI runs the production renderer build, full test suite and browser checks. Mac and Windows CI additionally build the actual packaged preview; Mac runtime, dependency inventory, DMG/signature integrity and macOS 27 Dock checks remain required.
