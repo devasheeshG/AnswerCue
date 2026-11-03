@@ -41,7 +41,7 @@ for (let cycle = 1; cycle <= 4; cycle++) {
   snapshot(`${cycle}-launch`);
   for (let repeat = 0; repeat < 3; repeat++) { const message = run('open', [appPath], true); if (message) fs.appendFileSync(path.join(output, 'reopen-messages.log'), message); await sleep(700); }
   const active = snapshot(`${cycle}-reopen`);
-  const parents = active.applications.filter(app => app.bundleId === 'com.answercue.desktop');
+  const parents = active.applications.filter(app => app.bundleId === mainBundle.CFBundleIdentifier);
   for (const app of parents) run('kill', ['-TERM', String(app.pid)], true);
   await sleep(3000);
   const stopped = snapshot(`${cycle}-quit`);

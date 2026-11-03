@@ -1,3 +1,4 @@
+import { UpstreamPreviewSettings } from './UpstreamPreviewSettings';
 import { SearchableSelect as ModelSelect } from '../ui/SearchableSelect';
 import { OPENAI_SERVICE_TIERS, type OpenAiServiceTier } from '../../../electron/llm/openAiServiceTier';
 import React, { useEffect, useMemo, useState } from 'react';
@@ -317,6 +318,7 @@ export const AIProvidersSettings: React.FC = () => {
             </div>
 
             <TranscriptionProvidersSettings />
+            <UpstreamPreviewSettings />
 
             <div className="space-y-4">
                 <div>

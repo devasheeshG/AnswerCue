@@ -45,6 +45,7 @@ export class CloudTranscriptionSTT extends EventEmitter {
   private turnOrder: string[] = [];
   private finalResults = new Map<string, string>();
   private retries = 0;
+  private sessionOpenedAt = 0;
   private retryTimer: ReturnType<typeof setTimeout> | null = null;
   private setupTimer: ReturnType<typeof setTimeout> | null = null;
   private keepalive: ReturnType<typeof setInterval> | null = null;
@@ -140,6 +141,7 @@ export class CloudTranscriptionSTT extends EventEmitter {
     this.setupTimer = setTimeout(() => { if (current() && !this.ready) { this.emit('error', new Error('Transcription session setup timed out')); socket.terminate(); } }, 15000);
     socket.on('open', () => {
       if (!current()) return;
+      this.sessionOpenedAt = Date.now();
       if (this.provider === 'openai') this.send({ type: 'session.update', session: { type: 'transcription', audio: { input: {
         format: { type: 'audio/pcm', rate: this.rate },
         transcription: { model: this.model, delay: 'minimal', ...(this.language ? { languages: [this.language] } : {}) }, turn_detection: null,
@@ -195,7 +197,13 @@ export class CloudTranscriptionSTT extends EventEmitter {
         } else if (type === 'committed_transcript') {
           if (message.text?.trim()) this.emit('transcript', { text: message.text, isFinal: true });
           this.pendingFinals = Math.max(0, this.pendingFinals - 1); this.retries = 0;
-        } else if (type === 'error' || String(type).endsWith('_error') || ['auth_error', 'quota_exceeded', 'rate_limited', 'insufficient_credits', 'commit_throttled', 'session_time_limit_exceeded'].includes(type) || type === 'conversation.item.input_audio_transcription.failed') {
+        } else if (type === 'error' || String(type).endsWith('_error') || ['auth_error', 'quota_exceeded', 'rate_limited', 'insufficient_credits', 'commit_throttled', 'session_time_limit_exceeded', 'insufficient_funds', 'unaccepted_terms', 'invalid_request', 'insufficient_audio_activity', 'resource_exhausted', 'transcriber_error'].includes(type) || type === 'conversation.item.input_audio_transcription.failed') {
+          // Upstream v3 distinguishes terminal account errors from recoverable session errors.
+          if (this.provider === 'elevenlabs' && ['rate_limited', 'commit_throttled', 'session_time_limit_exceeded', 'insufficient_audio_activity', 'resource_exhausted', 'transcriber_error'].includes(type)) {
+            this.emit('warning', { code: type, message: 'Transcription session interrupted; reconnecting.' });
+            socket.terminate();
+            return;
+          }
           // Do not echo vendor payloads: they can contain keys or audio text.
           this.emit('error', Object.assign(new Error(`Transcription provider rejected the request (${message.error?.code || type}). Check the key, model access, and API quota.`), { fatal: true }));
           this.stop();
@@ -216,6 +224,7 @@ export class CloudTranscriptionSTT extends EventEmitter {
       if (this.keepalive) clearInterval(this.keepalive);
       this.setupTimer = null; this.keepalive = null;
       if (this.finishing) { this.active = false; return; }
+      if (this.provider === 'elevenlabs' && Date.now() - this.sessionOpenedAt >= 5000) this.retries = 0;
       this.emit('error', new Error('Transcription connection closed; reconnecting.'));
       if (++this.retries > 5) { this.emit('error', new Error('Transcription reconnect limit reached. Restart the interview to retry.')); this.stop(); return; }
       this.retryTimer = setTimeout(() => { this.retryTimer = null; this.connect(); }, Math.min(1000 * 2 ** (this.retries - 1), 10000));

@@ -99,3 +99,27 @@ test('connection test can stop from accepted-session callback without leaking ke
   const h = harness(); h.stt.on('connected', () => h.stt.stop());
   h.open(); assert.equal(h.stt.keepalive, null); assert.equal(h.sockets[0].terminated, true);
 });
+
+// Upstream v3 error classification adapted to our cloud-only transport.
+test('ElevenLabs recoverable session errors reconnect instead of stopping capture', () => {
+  for (const type of ['session_time_limit_exceeded','rate_limited','insufficient_audio_activity']) {
+    const h = harness('scribe_v2_realtime'); const socket = h.open();
+    socket.receive({ message_type: type });
+    try { assert.notEqual(h.errors.at(-1).fatal, true); assert.equal(socket.terminated, true); } finally { h.stt.stop(); }
+  }
+});
+test('ElevenLabs credit and terms errors stop without leaking provider payloads', () => {
+  for (const type of ['insufficient_funds','quota_exceeded','unaccepted_terms']) {
+    const h = harness('scribe_v2_realtime'); const socket = h.open();
+    socket.receive({ message_type: type, error: 'private-key-and-audio' });
+    assert.equal(h.errors.at(-1).fatal, true); assert.equal(socket.terminated, true);
+    assert.equal(h.errors.at(-1).message.includes('private-key-and-audio'), false); h.stt.stop();
+  }
+});
+
+test('healthy ElevenLabs sessions do not consume the short-session reconnect budget', () => {
+ const h=harness('scribe_v2_realtime');const socket=h.open();
+ h.stt.retries=5;h.stt.sessionOpenedAt=Date.now()-6000;
+ socket.terminate();
+ try{assert.equal(h.stt.retries,1);}finally{h.stt.stop();}
+});

@@ -1,3 +1,4 @@
+import { useOverlayCustomButtons } from '../lib/overlayCustomButtons';
 import { animate, AnimatePresence, motion, useMotionValue, useTransform } from 'framer-motion';
 import {
   ArrowRight,
@@ -435,6 +436,8 @@ const AnswerCueInterface: React.FC<AnswerCueInterfaceProps> = ({
   const shellRef = React.useRef<HTMLDivElement>(null);
   const [isExpanded, setIsExpanded] = useState(true);
   const [inputValue, setInputValue] = useState('');
+  const customOverlayButtons = useOverlayCustomButtons();
+  const [runCustomAction, setRunCustomAction] = useState(false);
   const { shortcuts, isShortcutPressed } = useShortcuts();
   const [messages, setMessages] = useState<Message[]>([]);
   const latestVisibleScreenshotRef = useRef<ScreenshotAttachment | null>(null);
@@ -3054,6 +3057,11 @@ Provide only the answer, nothing else.`;
   // listener (mounted with [] deps) calls the CURRENT closure, not a
   // stale snapshot from first render.
   handleManualSubmitRef.current = handleManualSubmit;
+  useEffect(() => {
+    if (!runCustomAction) return;
+    setRunCustomAction(false);
+    void handleManualSubmitRef.current();
+  }, [runCustomAction]);
 
   const clearChat = () => {
     setMessages([]);
@@ -4877,6 +4885,12 @@ Provide only the answer, nothing else.`;
                   )}
                 </div>
 
+                {customOverlayButtons.length > 0 && <div className="flex gap-2 mt-2 no-drag">
+                  {customOverlayButtons.map(button => <button key={button.id} disabled={isProcessing} title={button.prompt}
+                    className="px-3 py-1 rounded-md border text-xs overlay-text-primary" onClick={() => {
+                      setInputValue(button.instruction || button.prompt); setRunCustomAction(true);
+                    }}>{button.name}</button>)}
+                </div>}
                 {/* Bottom Row */}
                 <div className="flex items-center justify-between mt-3 px-0.5">
                   <div className="flex items-center gap-1.5">

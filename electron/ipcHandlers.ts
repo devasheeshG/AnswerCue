@@ -1,3 +1,4 @@
+import { startChatWebSearch } from './services/webSearch/chatWebSearch';
 import { isOpenAiServiceTier, resolveOpenAiTierModel, normalizeOpenAiServiceTier } from './llm/openAiServiceTier';
 // ipcHandlers.ts
 
@@ -754,6 +755,28 @@ export function initializeIpcHandlers(appState: AppState): void {
         // framing in HARD_SYSTEM_PROMPT/ASSIST_MODE_PROMPT that was causing coding
         // questions to be answered with "At Aetherbot AI, I was responsible for..."
         // (resume hijack via CONTEXT_INTELLIGENCE_LAYER's "you ARE the user").
+        // Ported from upstream typed-chat search; no premium service or live-answer search.
+        if (!appState.getIsMeetingActive()) {
+          const searchBlock = await startChatWebSearch(message, {
+            typed: true, skill: false, meetingActive: false, callerScoped: Boolean(options?.systemPrompt),
+          }, () => {
+            const { CredentialsManager } = require('./services/CredentialsManager');
+            const key = CredentialsManager.getInstance().getTavilyApiKey();
+            if (!key) return null;
+            return { search: async (query: string, maxResults?: number) => {
+              const response = await fetch('https://api.tavily.com/search', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ api_key: key, query, max_results: maxResults || 5 }),
+                signal: AbortSignal.timeout(8000),
+              });
+              if (!response.ok) throw new Error(`Search provider HTTP ${response.status}`);
+              const body = await response.json() as any;
+              return body.results || [];
+            }};
+          });
+          if (searchBlock) context = [context, searchBlock].filter(Boolean).join('\n\n');
+        }
+
         const systemPromptOverride: string | undefined = options?.systemPrompt !== undefined
           ? options.systemPrompt
           : options?.skipSystemPrompt

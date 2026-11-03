@@ -1,0 +1,50 @@
+<!doctype html><html><head><meta charset="UTF-8"></head><body><div id="root"></div><script type="module">
+import React from 'react';
+import ReactDOM from 'react-dom/client';
+import {QueryClient,QueryClientProvider} from '@tanstack/react-query';
+import {ToastProvider} from '/src/components/ui/toast.tsx';
+import {AIProvidersSettings} from '/src/components/settings/AIProvidersSettings.tsx';
+import {CustomInstructionsSettings} from '/src/components/settings/CustomInstructionsSettings.tsx';
+import AnswerCueInterface from '/src/components/AnswerCueInterface.tsx';
+import Launcher from '/src/components/Launcher.tsx';
+import '/src/index.css';
+const listeners={};const emit=(topic,data)=>{for(const fn of [...(listeners[topic]||[])])fn(data)};
+const file='BEGIN\n'+'Complete resume details.\n'.repeat(150)+'END';
+const state=window.testState={active:false,meeting:null,workspace:null,starts:[],queries:[],manual:'Use bullets.',file,model:new URLSearchParams(location.search).get('missingStt')==='1'?'claude-haiku-4-5':localStorage.getItem('test-model')||'gpt-6.1-sol'};
+let cache=JSON.parse(localStorage.getItem('test-cache')||'null')||{openai:[{id:'gpt-6.1-sol',label:'GPT 6.1 Sol'}],claude:[{id:'claude-haiku-4-5',label:'Claude Haiku 4.5'}],gemini:[{id:'gemini-3.5-flash',label:'Gemini 3.5 Flash'}]};
+const missingStt=new URLSearchParams(location.search).get('missingStt')==='1';
+const base={platform:'darwin',ragQueryLive:async()=>({success:false}),
+ getTranscriptionConfig:async()=>({model:state.transcriptionModel||(missingStt&&state.savedElevenStt?'scribe_v2_realtime':'gpt-live-transcribe'),provider:(state.transcriptionModel==='scribe_v2_realtime'||(missingStt&&!!state.savedElevenStt))?'elevenlabs':'openai',configured:true}),
+ setTranscriptionModel:async model=>{state.transcriptionModel=model;emit('onCredentialsChanged');return {success:true}},
+ testTranscriptionConnection:async provider=>({success:!state.failTest,error:state.failTest?'Connection rejected':undefined}),
+ setOpenAiSttApiKey:async key=>{state.savedOpenaiStt=key;emit('onCredentialsChanged');return {success:true}},
+ setElevenLabsApiKey:async key=>{state.savedElevenStt=key;emit('onCredentialsChanged');return {success:true}},
+ getStoredCredentials:async()=>({hasOpenaiKey:!missingStt,hasClaudeKey:true,hasGeminiKey:!missingStt,sttProvider:(state.transcriptionModel==='scribe_v2_realtime'||(missingStt&&!!state.savedElevenStt))?'elevenlabs':'openai',hasSttOpenaiKey:!missingStt,hasElevenLabsKey:!missingStt||!!state.savedElevenStt}),
+ getDefaultModel:async()=>({model:state.model}),setDefaultModel:async model=>{state.model=model;localStorage.setItem('test-model',model);emit('onModelChanged',model);return {success:true}},
+ getProviderModelCache:async()=>structuredClone(cache),
+ fetchProviderModels:async provider=>{cache[provider]=[{id:'gpt-6.1-sol',label:'GPT 6.1 Sol'},{id:'gpt-4o',label:'GPT 4o'}];localStorage.setItem('test-cache',JSON.stringify(cache));emit('onProviderModelCacheChanged');return {success:true,models:cache[provider]}},
+ getOpenAiServiceTier:async()=>({tier:localStorage.getItem('test-tier')||'auto'}),setOpenAiServiceTier:async tier=>{localStorage.setItem('test-tier',tier);return {success:true}},
+ getProviderDataScopes:async()=>({}),setProviderDataScopes:async()=>({success:true}),
+ profileGetNotes:async()=>({success:true,content:state.manual+'\n\n<!-- custom-instructions-file:start name="resume.txt" -->\n<custom_instruction_file name="resume.txt">\n'+file+'\n</custom_instruction_file>\n<!-- custom-instructions-file:end -->'}),
+ profileGetPersona:async()=>({success:true,content:'Calm expert'}),profileSaveNotes:async content=>{state.savedNotes=content;return {success:true}},profileSavePersona:async content=>{state.savedPersona=content;return {success:true}},
+ getTheme:async()=> 'dark',getThemeMode:async()=> 'dark',getUndetectable:async()=>false,getMeetingActive:async()=>state.active,
+ getCurrentLlmConfig:async()=>({provider:state.model.startsWith('claude-')?'claude':'openai',model:state.model,isOllama:false}),
+ getRecentMeetings:async()=>state.meeting?[state.meeting]:[],getMeetingDetails:async()=>state.meeting,
+ getNativeAudioStatus:async()=>({available:true,initialized:true}),checkPermissions:async()=>({microphone:'granted',screen:'granted',accessibility:'granted',platform:'darwin'}),
+ localWhisperGetModels:async()=>({activeModelId:'moonshine-base',models:[{id:'moonshine-base',status:'available'}]}),
+ getInputDevices:async()=>[{id:'default',name:'Default Microphone'}],getOutputDevices:async()=>[{id:'default',name:'Default Speakers'}],
+ interviewDocsList:async()=>[],interviewWorkspaceGetById:async()=>state.workspace,interviewWorkspaceGetByMeeting:async()=>state.workspace,
+ interviewWorkspaceFork:async id=>{const meeting={id:'forked',title:'Saved interview (fork)',date:new Date().toISOString(),duration:'1:00',summary:'',source:'manual',isProcessed:true,transcript:[],usage:[]};state.meeting=meeting;state.workspace={...state.workspace,id:'fork-workspace',meetingId:meeting.id};emit('onMeetingsUpdated');return {success:true,state:state.workspace,meeting}},interviewWorkspaceSave:async input=>{state.workspace={...state.workspace,...input};return {success:true,state:state.workspace}},
+ streamGeminiChat:async(query,images,context)=>{state.queries.push({query,context});setTimeout(()=>{emit('onGeminiStreamToken','A concise answer.');emit('onGeminiStreamDone')},30);return {success:true}},
+ startMeeting:async metadata=>{state.starts.push(metadata);state.active=true;emit('onMeetingStateChanged',{isActive:true});return {success:true}},
+ endMeeting:async()=>{state.active=false;emit('onMeetingStateChanged',{isActive:false});state.meeting={id:'stable-interview',title:'Saved interview',date:new Date().toISOString(),duration:'1:00',summary:'',isProcessed:true,transcript:[{speaker:'interviewer',text:'Earlier interview question',timestamp:Date.now()-100}],usage:[]};state.workspace={...state.workspace,meetingId:state.meeting.id,status:'complete'};emit('onMeetingsUpdated');emit('onInterviewPaused',{meetingId:state.meeting.id,workspaceStateId:state.workspace.id});return {success:true}},
+ getKeybinds:async()=>[],getCalendarEvents:async()=>[],getCalendars:async()=>[],getModes:async()=>[],getRecentFiles:async()=>[],getUserName:async()=> 'Tester',getAppVersion:async()=> '2.9.0-upstream.1',
+ checkPremium:async()=>false,checkPremiumAsync:async()=>false,checkPremiumSync:()=>false,
+};
+window.electronAPI=new Proxy(base,{get:(target,key)=>{if(key in target)return target[key];if(String(key).startsWith('on'))return fn=>{(listeners[key]??=new Set()).add(fn);return()=>listeners[key].delete(fn)};return async()=>({success:true})}});
+document.documentElement.setAttribute('data-theme','dark');
+const mode=new URLSearchParams(location.search).get('mode');
+let child=mode==='overlay'?React.createElement(AnswerCueInterface):mode==='custom'?React.createElement(CustomInstructionsSettings):mode==='launcher'?React.createElement(Launcher,{onStartMeeting:metadata=>base.startMeeting(metadata),onOpenSettings:()=>{}}):React.createElement(AIProvidersSettings);
+if(mode!=='launcher')child=React.createElement('div',{style:{padding:32,maxWidth:900,margin:'auto'}},child);
+const root=ReactDOM.createRoot(document.getElementById('root'));window.testUnmount=()=>root.unmount();root.render(React.createElement(QueryClientProvider,{client:new QueryClient()},React.createElement(ToastProvider,null,child)));
+</script></body></html>

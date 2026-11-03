@@ -1,0 +1,39 @@
+name: Upstream preview regression
+on:
+  push:
+    branches: ['integration/**']
+permissions:
+  contents: read
+jobs:
+  regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install JS test dependencies
+        run: npm ci --ignore-scripts
+      - name: Renderer type check and production build
+        run: npm run build
+      - name: Full service, provider, and custom-feature regression suite
+        run: npm test 2>&1 | tee preview-tests.log
+      - name: Install test browser
+        run: npx playwright install --with-deps chromium
+      - name: Exercise custom workflows and upstream actions in the real React UI
+        run: |
+          npm run dev -- --host 127.0.0.1 --port 5180 --strictPort > preview-ui-server.log 2>&1 &
+          PREVIEW_VITE_PID=$!
+          trap 'kill "$PREVIEW_VITE_PID" 2>/dev/null || true' EXIT
+          npx wait-on http://127.0.0.1:5180
+          node scripts/check-upstream-preview-ui.mjs 2>&1 | tee preview-ui-tests.log
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: upstream-preview-regression-evidence
+          path: |
+            preview-tests.log
+            preview-ui-tests.log
+            preview-ui-server.log

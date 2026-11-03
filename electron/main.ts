@@ -9,8 +9,15 @@ if (!app.isPackaged) {
   require('dotenv').config();
 }
 
+// Integration previews never migrate or overwrite the stable AnswerCue profile.
+if (app.getVersion().includes('-upstream.')) {
+  const previewProfilePath = path.join(app.getPath('appData'), 'AnswerCue-UpstreamPreview');
+  fs.mkdirSync(previewProfilePath, { recursive: true });
+  app.setPath('userData', previewProfilePath);
+}
+
 const APP_NAME = "AnswerCue";
-const APP_ID = "com.answercue.desktop";
+const APP_ID = app.getVersion().includes("-upstream.") ? "com.answercue.preview" : "com.answercue.desktop";
 const DEBUG_LOG_FILE_NAME = "answercue_debug.log";
 
 let macDockVisibility: MacDockVisibility | null = null;
@@ -1027,6 +1034,7 @@ export class AppState {
   }
 
   private setupAutoUpdater(): void {
+    if (app.getVersion().includes('-upstream.')) return;
     // On signed builds we can swap+relaunch in place, so download in the
     // background the moment an update is found and let it apply on quit if the
     // user doesn't click "Restart". On builds that can't auto-install (dev, or
