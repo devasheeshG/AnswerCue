@@ -1,3 +1,4 @@
+import './services/PreviewProfile';
 import { MacDockVisibility } from './services/MacDockVisibility';
 import { app, BrowserWindow, Tray, Menu, nativeImage, ipcMain, shell, systemPreferences, screen, desktopCapturer } from "electron"
 import * as crypto from "crypto"
@@ -7,13 +8,6 @@ import { autoUpdater } from "electron-updater"
 import { ensureNativeModuleAbi } from "./utils/nativeModuleGuard"
 if (!app.isPackaged) {
   require('dotenv').config();
-}
-
-// Integration previews never migrate or overwrite the stable AnswerCue profile.
-if (app.getVersion().includes('-upstream.')) {
-  const previewProfilePath = path.join(app.getPath('appData'), 'AnswerCue-UpstreamPreview');
-  fs.mkdirSync(previewProfilePath, { recursive: true });
-  app.setPath('userData', previewProfilePath);
 }
 
 const APP_NAME = "AnswerCue";
